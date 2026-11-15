@@ -133,22 +133,59 @@
         return params;
     }
 
-    // Mesma lista de campos contada em `_build_queryset_and_context`
-    // (equipamentos.py) — mantém o badge "N filtros ativos" do resumo em
-    // sincronia com o que o backend de fato aplica. Um campo multi-valorado
-    // (ex.: subtipo com 3 IDs marcados) conta como 1 filtro ativo, não 3.
-    const FILTRO_CAMPOS = [
-        'nome', 'numero_serie', 'modelo', 'fornecedor', 'status',
-        'tipo_item', 'estoque', 'subtipo', 'localidade', 'centro_custo',
+    // A barra mostra SEMPRE a busca, a área e os atalhos de status; o resto
+    // mora em "Mais filtros", que pode estar fechado. O badge do botão conta só
+    // o que está escondido — mesma lista de `filtros_avancados_valores` em
+    // `_build_queryset_and_context` (equipamentos.py). Um campo multi-valorado
+    // (ex.: subtipo com 3 IDs marcados) conta como 1 filtro, não 3.
+    const FILTRO_AVANCADOS = [
+        'modelo', 'fornecedor', 'tipo_item', 'estoque',
+        'subtipo', 'localidade', 'centro_custo',
     ];
+    // Filtros que ficam à vista na barra: só servem para decidir se "Limpar" aparece.
+    const FILTRO_VISIVEIS = ['nome', 'numero_serie', 'area', 'status'];
+
+    // Os atalhos de status são os próprios chips da página (vêm da view). Um
+    // status fora deles só existe no select de "Mais filtros" — escondido —,
+    // então também conta como filtro escondido.
+    function statusDosAtalhos() {
+        return Array.from(document.querySelectorAll('#chipsWrap .eq-chip'))
+            .map((chip) => chip.dataset.val || '')
+            .filter(Boolean);
+    }
+
+    function contarAvancados(params) {
+        let count = FILTRO_AVANCADOS.reduce((acc, campo) => acc + (params.has(campo) ? 1 : 0), 0);
+        const status = params.get('status');
+        if (status && !statusDosAtalhos().includes(status)) count += 1;
+        return count;
+    }
 
     function updateFiltersBadge(params) {
-        if (!dom.filtrosBadge || !dom.filtrosBadgeText) return;
+        const count = contarAvancados(params);
 
-        const count = FILTRO_CAMPOS.reduce((acc, campo) => acc + (params.has(campo) ? 1 : 0), 0);
+        if (dom.filtrosBadge && dom.filtrosBadgeText) {
+            dom.filtrosBadge.hidden = count === 0;
+            dom.filtrosBadgeText.textContent = String(count);
+        }
 
-        dom.filtrosBadge.hidden = count === 0;
-        dom.filtrosBadgeText.textContent = `${count} filtro${count === 1 ? '' : 's'} ativo${count === 1 ? '' : 's'}`;
+        // "Limpar" só aparece quando há o que limpar (qualquer filtro, à vista ou não).
+        const btnLimpar = document.getElementById('btnLimpar');
+        if (btnLimpar) {
+            const algum = count > 0 || FILTRO_VISIVEIS.some((campo) => params.has(campo));
+            btnLimpar.hidden = !algum;
+        }
+    }
+
+    // "Mais filtros": abre/fecha o painel dos filtros escondidos.
+    function toggleAvancados(abrir) {
+        const painel = document.getElementById('filtrosAvancados');
+        const botao = document.getElementById('btnMaisFiltros');
+        if (!painel || !botao) return;
+
+        const mostrar = typeof abrir === 'boolean' ? abrir : painel.hidden;
+        painel.hidden = !mostrar;
+        botao.setAttribute('aria-expanded', mostrar ? 'true' : 'false');
     }
 
     async function refreshList(extraParams = {}) {
@@ -227,6 +264,17 @@
         $('.select2-enable').val(null).trigger('change.select2');
         updateChipsVisual('');
 
+        // `form.reset()` volta os campos ao valor que o SERVIDOR renderizou, não
+        // a "vazio": com ?area=produtiva na URL o rádio voltaria a "Produtiva".
+        // Marcar "Todas" explicitamente é o que de fato limpa a área.
+        const todasAsAreas = dom.form.querySelector('input[name="area"][value=""]');
+        if (todasAsAreas) todasAsAreas.checked = true;
+
+        // Mesmo motivo para os campos de texto (busca por nome e por nº de série,
+        // modelo, fornecedor): o `reset()` devolveria o texto da URL em que a
+        // página abriu, e "Limpar" deixaria o campo preenchido com a lista já limpa.
+        dom.form.querySelectorAll('input[type="text"]').forEach((campo) => { campo.value = ''; });
+
         dom.form.querySelectorAll('.eq-exc-toggle input[type="checkbox"]').forEach((cb) => {
             cb.checked = false;
             cb.closest('.eq-filter-field')?.classList.remove('is-exceto');
@@ -235,6 +283,7 @@
         refreshList({
             page: 1,
             nome: null,
+            area: null,
             status: null,
             subtipo: null,
             subtipo_exc: null,
@@ -526,6 +575,14 @@
         });
 
         document.getElementById('btnLimpar')?.addEventListener('click', resetFilters);
+
+        document.getElementById('btnMaisFiltros')?.addEventListener('click', () => toggleAvancados());
+
+        // Área de operação (controle segmentado): o rádio marcado já é lido pelo
+        // FormData de `buildListParams`, então basta recarregar a lista.
+        document.querySelectorAll('#areaWrap input[name="area"]').forEach((radio) => {
+            radio.addEventListener('change', () => refreshList({ page: 1 }));
+        });
 
         dom.chips?.addEventListener('click', (event) => {
             const chip = event.target.closest('.eq-chip');

@@ -96,6 +96,9 @@ ORCAMENTO_MINIMO_S = 20
 ORCAMENTO_MAXIMO_S = 20 * 60
 RESERVA_PARA_O_MANUAL = 0.9                         # 10% do limite de requisições fica para o "Atualizar" da tela
 BACKOFF_MAXIMO_MINUTOS = 30                         # chip que falha é consultado de novo em intervalos crescentes, até aqui
+CICLO_DO_LOTE_MINUTOS = 25                          # o "Atualizar todos" dura bem mais que um ciclo: dá a ele o tempo e a trava de um lote
+ORIGEM_DO_LOTE = "manual"                           # `M2MExecucao.origem` e `M2MConsulta.origem` do "Atualizar todos"
+PASSO_DO_PROGRESSO_DO_LOTE = 5                      # de quantos em quantos chips o lote grava "X de N" (um UPDATE barato)
 RETENCAO_DAS_EXECUCOES = timedelta(days=7)
 JANELA_DA_SINCRONIZACAO_MIN = 3                     # "atualizada" = ciclo bem-sucedido há menos de N tiques
 ABERTAS = M2MOcorrencia.ESTADOS_ABERTOS
@@ -319,7 +322,7 @@ def criar_chip(dados: dict, usuario=None, *, importacao=None, item_ti=None, item
     try:
         with transaction.atomic():
             chip = M2MChip(
-                **valores, monitorado=True,
+                **valores, monitorado=True, situacao_uso_em=timezone.now(),
                 criado_por=_usuario_ou_none(usuario), atualizado_por=_usuario_ou_none(usuario),
             )
             chip.full_clean(exclude=["nome", "iccid", "imsi"], validate_unique=False, validate_constraints=False)
@@ -1368,6 +1371,17 @@ def trava_expira(tique_minutos: int | None) -> timedelta:
     return min(TRAVA_EXPIRA, max(TRAVA_MINIMA, timedelta(minutes=3 * tique)))
 
 
+def lote_em_curso(agora=None) -> M2MExecucao | None:
+    """A execução do "Atualizar todos" que está rodando agora, ou `None`. É a que mantém a trava de 30 min mesmo quando
+    quem olha usa o prazo curto do ciclo de 1 minuto (3 min): sem isto o ciclo agendado julgaria "morta" uma execução
+    de lote que dura 8 min ou mais, tomaria a trava e as duas consultariam ao mesmo tempo — estourando juntas o limite de
+    requisições da API. Execução que MORREU deixa de contar em `TRAVA_EXPIRA`, como qualquer outra."""
+    agora = agora or timezone.now()
+    return M2MExecucao.objects.filter(
+        origem=ORIGEM_DO_LOTE, estado=M2MExecucao.Estado.EM_ANDAMENTO, iniciada_em__gt=agora - TRAVA_EXPIRA,
+    ).order_by("-iniciada_em").first()
+
+
 def orcamento_do_ciclo_s(tique_minutos: int | None) -> int:
     """Quanto tempo (s) o ciclo pode gastar consultando chips: o tique menos uma margem, para a execução
     terminar ANTES do próximo tique (que, senão, pularia por "já em andamento") — o que sobrar vencido
@@ -1394,6 +1408,7 @@ def podar_execucoes(agora=None) -> int:
 
 def executar_ciclo(
     origem: str = "agendada", *, cliente=None, tique_minutos: int | None = None, ciclo_minutos: int | None = None,
+    todos: bool = False, usuario=None,
 ) -> ResumoCiclo:
     """Um ciclo de monitoramento — o que `monitorar_m2m` roda a cada tique do Agendador.
 
@@ -1419,7 +1434,12 @@ def executar_ciclo(
     `tique_minutos`: intervalo da tarefa do Agendador, só para a tela saber se ela
     parou; se omitido, o valor gravado não muda. `ciclo_minutos`: de quanto em quanto tempo este
     ciclo se repete DE VERDADE (`executar_varios_ciclos` roda um por minuto dentro de um tique
-    maior): é ele, e não o tique, que dá o tempo do ciclo e o prazo da trava. Devolve `ResumoCiclo`."""
+    maior): é ele, e não o tique, que dá o tempo do ciclo e o prazo da trava. Devolve `ResumoCiclo`.
+
+    `todos=True` é o "Atualizar todos" (`atualizar_todos`): no lugar dos vencidos entram TODOS os chips consultáveis, sem o
+    corte `max_chips_execucao`, e as consultas ficam gravadas como `manual` e com o `usuario` que pediu — não como
+    agendadas e sem autor. O resto é o mesmo ciclo: a mesma trava, o mesmo limite de requisições por minuto, a lista
+    completa lida UMA vez para todos e depois um chip por vez. O que não couber no tempo do ciclo fica `pendente`."""
     agora = timezone.now()
     cfg = M2MIntegracao.get()
     resumo = ResumoCiclo()
@@ -1445,8 +1465,11 @@ def executar_ciclo(
         return resumo
 
     tique_efetivo = ciclo_minutos or tique_minutos or cfg.tique_minutos
+    expira = trava_expira(tique_efetivo)
+    if todos or lote_em_curso(agora) is not None:
+        expira = TRAVA_EXPIRA            # o lote dura mais que o ciclo de 1 min: ninguém toma a trava dele pelo prazo curto
     travou = M2MIntegracao.objects.filter(pk=1).filter(
-        Q(executando_desde__isnull=True) | Q(executando_desde__lt=agora - trava_expira(tique_efetivo))
+        Q(executando_desde__isnull=True) | Q(executando_desde__lt=agora - expira)
     ).update(executando_desde=agora)
     if not travou:
         resumo.motivo_pulo, resumo.mensagem = "em_andamento", "outra execução do monitoramento ainda está em andamento."
@@ -1463,17 +1486,21 @@ def executar_ciclo(
         orcamento_s = orcamento_do_ciclo_s(tique_efetivo)
 
         quem_esta_vencido = Q_CONSULTAVEL & (Q(proxima_consulta_em__isnull=True) | Q(proxima_consulta_em__lte=timezone.now()))
-        resumo.vencidos = M2MChip.objects.filter(quem_esta_vencido).count()
+        # `vencidos` é, no lote, o TOTAL a atualizar: é o "N" do "X de N" da tela.
+        alvo = Q_CONSULTAVEL if todos else quem_esta_vencido
+        origem_da_consulta = ORIGEM_DO_LOTE if todos else "agendada"
+        autor = usuario if todos else None
+        resumo.vencidos = M2MChip.objects.filter(alvo).count()
         execucao = M2MExecucao.objects.create(origem=origem, iniciada_em=agora, vencidos=resumo.vencidos)
         resumo.execucao_id = execucao.pk
         vencidos = (
-            M2MChip.objects.filter(quem_esta_vencido).select_related("operadora")
+            M2MChip.objects.filter(alvo).select_related("operadora")
             .order_by(
                 Case(When(sessao_estado=M2MChip.SessaoEstado.ATIVA, then=0), default=1, output_field=IntegerField()),
                 F("proxima_consulta_em").asc(nulls_first=True), "pk",
-            )[: max(1, cfg.max_chips_execucao)]
+            )
         )
-        a_consultar = list(vencidos)
+        a_consultar = list(vencidos if todos else vencidos[: max(1, cfg.max_chips_execucao)])
         antes = {c.pk: (c.sessao_estado, c.consumo_bytes) for c in a_consultar}
         sessoes_novas = sessoes_atualizadas = 0
         # Com vários chips vencidos, UMA leitura da lista completa de SIM Cards da conta
@@ -1484,7 +1511,7 @@ def executar_ciclo(
         carregar = getattr(cliente, "carregar_lote", None)
         if carregar is not None and len(a_consultar) >= LIMIAR_LOTE:
             try:
-                carregar("agendada")
+                carregar(origem_da_consulta)
                 usa_lote = True
             except tim.TimM2MErro as exc:
                 resumo.erro = tim.sanear(str(exc))
@@ -1499,7 +1526,7 @@ def executar_ciclo(
             primeiro = False
             try:
                 r = atualizar(
-                    chip, TIPOS_DE_CONSULTA, "agendada", None,
+                    chip, TIPOS_DE_CONSULTA, origem_da_consulta, autor,
                     cliente=cliente, pausa_s=pausa_chip, avaliar=False, cfg=cfg, conferir=False,
                 )
             except AtualizacaoRecusada as exc:
@@ -1512,6 +1539,12 @@ def executar_ciclo(
                 resumo.falhas += 1
             else:
                 resumo.sucessos += 1
+            if todos and resumo.consultados % PASSO_DO_PROGRESSO_DO_LOTE == 0:
+                # O "X de N" da tela: o ciclo comum só grava os números ao terminar, mas o lote dura minutos e quem
+                # clicou fica olhando. Um UPDATE a cada poucos chips, na própria linha da execução.
+                M2MExecucao.objects.filter(pk=execucao.pk).update(
+                    consultados=resumo.consultados, sucessos=resumo.sucessos, falhas=resumo.falhas,
+                )
             if r.interrompida_por:
                 resumo.interrompido_por = r.interrompida_por
                 break
@@ -1557,6 +1590,51 @@ def executar_ciclo(
 
     notificar_ocorrencias(novas)  # fora da trava: SMTP lento não segura a próxima execução
     return resumo
+
+
+def conferir_atualizar_todos(agora=None) -> int:
+    """Pode começar um "Atualizar todos" AGORA? Devolve quantos chips ele vai atualizar, ou levanta `AtualizacaoRecusada`
+    com a razão (`configuracao` | `credencial_recusada` | `bloqueada` | `em_andamento` | `sem_chips`). É a conferência
+    que a TELA faz antes de abrir o processo do lote, para responder com a razão em vez de iniciar uma execução que o
+    próprio ciclo pularia. O ciclo confere de novo (a trava é dele): esta leitura nunca autoriza nada."""
+    agora = agora or timezone.now()
+    cfg = M2MIntegracao.get()
+    motivo = tim.motivo_nao_configurada()
+    if motivo:
+        raise AtualizacaoRecusada(motivo, "configuracao")
+    if cfg.falha_autenticacao_em and (not cfg.autenticada_em or cfg.falha_autenticacao_em > cfg.autenticada_em):
+        raise AtualizacaoRecusada(
+            "A API recusou a credencial e ela não foi trocada nem testada com sucesso desde então. Corrija o token.",
+            "credencial_recusada",
+        )
+    if cfg.bloqueado_ate and cfg.bloqueado_ate > agora:
+        raise AtualizacaoRecusada(
+            f"A API limitou as requisições; as consultas ficam pausadas até {_hhmm(cfg.bloqueado_ate)}.",
+            "bloqueada", aguardar_s=int((cfg.bloqueado_ate - agora).total_seconds()),
+        )
+    if estado_integracao(agora)["executando"]:
+        raise AtualizacaoRecusada(
+            "Já há uma atualização dos chips em andamento. Acompanhe pela faixa de sincronização.", "em_andamento",
+        )
+    total = M2MChip.objects.filter(Q_CONSULTAVEL).count()
+    if not total:
+        raise AtualizacaoRecusada("Nenhum chip está sendo consultado pela API.", "sem_chips")
+    return total
+
+
+def atualizar_todos(usuario=None, *, cliente=None) -> ResumoCiclo:
+    """O "Atualizar todos" da tela: UMA execução que atualiza todos os chips consultáveis, no limite de requisições da API.
+
+    "Todos ao mesmo tempo" não existe nesse limite (30 requisições por minuto): 205 chips levam uns 8 minutos, mais na
+    primeira passada, que baixa 3 dias de sessões por chip. O que a execução faz de uma vez só é a leitura da lista
+    completa da conta (sessão e consumo de TODOS os chips, numa chamada); em seguida lê as sessões de dados de cada chip,
+    no ritmo permitido. Quem estourar o tempo do ciclo fica `pendente` e entra na fila normal do monitoramento.
+
+    É o que o comando `monitorar_m2m --todos` roda — a tela só o dispara em outro processo e acompanha o progresso lendo
+    a `M2MExecucao` (`estado_sincronizacao["lote"]`). Pula, como todo ciclo, quando outra execução está em andamento."""
+    return executar_ciclo(
+        ORIGEM_DO_LOTE, cliente=cliente, ciclo_minutos=CICLO_DO_LOTE_MINUTOS, todos=True, usuario=usuario,
+    )
 
 
 def cadencia_dos_ciclos(cfg: M2MIntegracao, tique_minutos: int | None = None) -> int:
@@ -1989,7 +2067,10 @@ def estado_integracao(agora=None) -> dict:
         "autenticada_em": cfg.autenticada_em, "bloqueado_ate": cfg.bloqueado_ate,
         "falha_autenticacao_em": cfg.falha_autenticacao_em, "ultimo_erro": cfg.ultimo_erro,
         "ultimo_teste": cfg.ultimo_teste or {}, "tique_minutos": cfg.tique_minutos,
-        "executando": bool(cfg.executando_desde and agora - cfg.executando_desde < trava_expira(cfg.tique_minutos)),
+        "executando": bool(
+            cfg.executando_desde
+            and (agora - cfg.executando_desde < trava_expira(cfg.tique_minutos) or lote_em_curso(agora) is not None)
+        ),
         "token_legivel": token["legivel"], "token_env_definido": token["token_env_definido"],
         "token_no_banco": token["token_no_banco"], "chave_cifra_configurada": token["chave_cifra_configurada"],
         "base_url": base,
@@ -2035,6 +2116,7 @@ def estado_sincronizacao(agora=None) -> dict:
         proxima              : próxima atualização prevista
         vencidos             : chips que já passaram do intervalo e esperam a fila
         execucao             : a última `M2MExecucao` (chips, consultas, falhas, requisições, mudanças) ou None
+        lote                 : o "Atualizar todos" em curso, `{"em_andamento", "feitos", "total"}`, ou None
         plano                : intervalo desejado × efetivo (`plano_atual`)
         tique_minutos, tarefa_parada
 
@@ -2052,6 +2134,12 @@ def estado_sincronizacao(agora=None) -> dict:
         Q_CONSULTAVEL, proxima_consulta_em__lt=agora - timedelta(minutes=max(3, 2 * cadencia_dos_ciclos(cfg))),
     ).count()
     ultima_resposta = M2MChip.objects.filter(Q_CONSULTAVEL).aggregate(m=Max("ultima_valida_em"))["m"]
+    # O "Atualizar todos" em curso (só vale com a trava de pé: uma linha `em_andamento` de execução que morreu não conta).
+    execucao_do_lote = lote_em_curso(agora) if integ["executando"] else None
+    lote = (
+        {"em_andamento": True, "feitos": execucao_do_lote.consultados, "total": execucao_do_lote.vencidos}
+        if execucao_do_lote is not None else None
+    )
 
     # A cadência dos ciclos (1 min com o intervalo desejado de 1 min, mesmo com a tarefa de 15 em 15): a tela só
     # diz "parada" quando passa bem de dois ciclos sem execução. Piso de 3 min — o ciclo leva até 50 s.
@@ -2065,6 +2153,8 @@ def estado_sincronizacao(agora=None) -> dict:
         estado, motivo = "indisponivel", integ["rotulo"] + "."
     elif integ["executando"]:
         estado, motivo = "em_andamento", "Um ciclo está consultando os chips agora."
+        if lote is not None:
+            motivo = f"Atualizando todos os chips: {lote['feitos']} de {lote['total']}."
     elif parada:
         estado = "desatualizada"
         motivo = (
@@ -2085,7 +2175,7 @@ def estado_sincronizacao(agora=None) -> dict:
         "ind": INDICADOR_SINCRONIZACAO[estado],
         "ultima_sincronizacao": cfg.ultimo_sucesso, "ultima_tentativa": cfg.ultima_execucao,
         "ultima_resposta_valida": ultima_resposta, "proxima": _proxima_prevista(agora),
-        "vencidos": vencidos, "execucao": ultima, "plano": plano_atual(cfg),
+        "vencidos": vencidos, "execucao": ultima, "plano": plano_atual(cfg), "lote": lote,
         "tique_minutos": cfg.tique_minutos, "tarefa_parada": parada, "integracao": integ,
     }
 
@@ -2168,7 +2258,7 @@ def linha_do_tempo(chip: M2MChip, tipos=None, limite: int = 100, com_api: bool =
             })
     if "evento" in fontes:
         eventos = chip.eventos.all() if com_api else chip.eventos.exclude(tipo__in=EVENTOS_DE_API)
-        for e in eventos.order_by("-em", "-pk")[:limite]:
+        for e in eventos.select_related("usuario").order_by("-em", "-pk")[:limite]:
             itens.append({
                 "quando": e.em, "fonte": "evento", "tipo": e.tipo, "titulo": e.get_tipo_display(),
                 "detalhe": _resumo_do_evento(e), "nivel": "info", "ref_id": e.pk,
@@ -2201,6 +2291,8 @@ def _resumo_do_evento(e: M2MEvento) -> str:
         return "Campos alterados: " + ", ".join(sorted((d.get("alteracoes") or {}).keys())) + "."
     if e.tipo == M2MEvento.Tipo.CADASTRO:
         return f"Cadastrado como {d.get('nome', '')}."
+    if e.tipo == M2MEvento.Tipo.SITUACAO_MUDOU:
+        return _resumo_da_mudanca_de_situacao(e)
     if e.tipo in _EVENTOS_DE_MOVIMENTACAO:
         return _resumo_da_movimentacao(e.tipo, d)
     if e.tipo == M2MEvento.Tipo.ITEM_REMOVIDO:
@@ -2239,10 +2331,37 @@ def _resumo_da_movimentacao(tipo: str, d: dict) -> str:
             else f"Substituído pelo chip {outro} no {origem}."
         )
     elif tipo == M2MEvento.Tipo.RETORNO_DISPONIBILIDADE:
-        texto = "Devolvido à disponibilidade."
+        anterior = d.get("situacao_anterior_rotulo")      # o evento de antes de 15/11/2026 não tem
+        texto = f"Devolvido à disponibilidade (estava {anterior.lower()})." if anterior else "Devolvido à disponibilidade."
     else:
         texto = "Chip inativado." + (f" Estava no {origem}." if origem else "")
     return f"{texto} Motivo: {motivo}" if motivo else texto
+
+
+def mudancas_de_situacao(chip: M2MChip, limite: int = 6) -> list[dict]:
+    """O recorte CURTO da trilha que responde "por onde este chip passou": as últimas mudanças de situação e as trocas
+    (vinculado, desvinculado, transferido, substituído, devolvido, inativado, situação mudada), do mais novo para o mais
+    antigo. É a mesma trilha da `linha_do_tempo`, só os eventos que mexem na situação. Cada item:
+    `{"quando", "titulo", "detalhe", "tipo"}`."""
+    eventos = chip.eventos.filter(
+        tipo__in=_EVENTOS_DE_MOVIMENTACAO + (M2MEvento.Tipo.SITUACAO_MUDOU,)
+    ).select_related("usuario").order_by("-em", "-pk")[:limite]
+    return [
+        {"quando": e.em, "titulo": e.get_tipo_display(), "detalhe": _resumo_do_evento(e), "tipo": e.tipo} for e in eventos
+    ]
+
+
+def _resumo_da_mudanca_de_situacao(e: M2MEvento) -> str:
+    """"De disponível para com defeito. Motivo: … Por fulano." — a única linha da trilha que diz QUEM fez, porque a
+    situação é decisão de gente (o resto da trilha é a API ou o cadastro) e quem decidiu é o que se procura depois."""
+    d = e.dados or {}
+    texto = f"De {(d.get('situacao_anterior_rotulo') or '—').lower()} para {(d.get('situacao_uso_rotulo') or '—').lower()}."
+    motivo = (d.get("motivo") or "").strip()
+    if motivo:
+        texto += f" Motivo: {motivo}" + ("" if motivo[-1] in ".!?" else ".")
+    if e.usuario_id:
+        texto += f" Por {e.usuario.get_username()}."
+    return texto
 
 
 def _unidade_para(maior_valor: int, base: int) -> tuple[str, int]:
@@ -2392,11 +2511,18 @@ GRUPOS_DE_USO = (
     ("nao_utilizado", "Não utilizados"),
     ("vinculo_inativo", "Vinculados a equipamento fora de operação"),
     ("manutencao", "Chips em manutenção"),
+    ("defeito", "Chips com defeito"),
+    ("pausado", "Chips pausados"),
+    ("reservado", "Chips reservados"),
     ("inativo", "Chips inativos"),
     ("desativado", "Monitoramento desativado"),
     ("sem_integracao", "Sem integração com a operadora"),
 )
 ROTULO_DE_USO = dict(GRUPOS_DE_USO)
+# Os grupos que SÃO a própria `situacao_uso` do chip (decisão de cadastro, não leitura da API): cada situação que não é
+# disponível nem vinculado tem o seu — sem isso o chip novo (pausado, defeito, reservado) cairia fora de todos os grupos e a
+# soma do gráfico de utilização deixaria de fechar com o total.
+GRUPOS_QUE_SAO_SITUACAO = ("manutencao", "defeito", "pausado", "reservado", "inativo")
 
 
 def _vinculo_ativo_do_chip():
@@ -2404,18 +2530,17 @@ def _vinculo_ativo_do_chip():
 
 
 def q_uso(grupo: str) -> Q:
-    """O critério SQL de cada grupo de `GRUPOS_DE_USO` (chave inválida: nenhum chip). Precedência: inativo e em
-    manutenção (decisão do cadastro) → monitoramento desativado → operadora sem integração → vínculo."""
+    """O critério SQL de cada grupo de `GRUPOS_DE_USO` (chave inválida: nenhum chip). Precedência: situação decidida no
+    cadastro (inativo, em manutenção, com defeito, pausado, reservado) → monitoramento desativado → operadora sem
+    integração → vínculo."""
     operando = Q(situacao_uso__in=(M2MChip.SituacaoUso.DISPONIVEL, M2MChip.SituacaoUso.VINCULADO))
     acompanhado = operando & Q_CONSULTAVEL
     vinculado = acompanhado & Q(situacao_uso=M2MChip.SituacaoUso.VINCULADO)
     destino_em_operacao = Exists(_vinculo_ativo_do_chip().filter(
         Q(veiculo__status__in=STATUS_DE_VEICULO_EM_OPERACAO) | Q(item__status__in=STATUS_DE_ITEM_EM_OPERACAO)
     ))
-    if grupo == "inativo":
-        return Q(situacao_uso=M2MChip.SituacaoUso.INATIVO)
-    if grupo == "manutencao":
-        return Q(situacao_uso=M2MChip.SituacaoUso.MANUTENCAO)
+    if grupo in GRUPOS_QUE_SAO_SITUACAO:
+        return Q(situacao_uso=grupo)
     if grupo == "desativado":
         return operando & Q(monitorado=False)
     if grupo == "sem_integracao":
@@ -2451,7 +2576,7 @@ def listar_chips(filtros: dict | None = None, agora=None):
         iccid, imsi  trecho do identificador (só dígitos)
         veiculo      id do veículo atual (só dígitos) OU trecho do código/nome/placa dele
         operadora    id da operadora
-        situacao_uso `disponivel` | `vinculado` | `manutencao` | `inativo`
+        situacao_uso `disponivel` | `vinculado` | `reservado` | `pausado` | `defeito` | `manutencao` | `inativo`
         estoque_ti   `com` | `sem`  (o chip tem ou não o item do estoque de TI ligado)
         sessao       `ativa` | `sem_sessao` | `nao_interpretado` | `nao_consultado`
         situacao     `normal` | `pendente` | `erro_consulta` | `desatualizado` | `desativado` |

@@ -9,6 +9,11 @@ cada 401 ou 429 e nunca martela uma credencial recusada.
 Uso:
     python manage.py monitorar_m2m             # um ciclo agora
     python manage.py monitorar_m2m --tique 1   # idem, informando o tique da tarefa (1 min)
+    python manage.py monitorar_m2m --todos --usuario fulano   # "Atualizar todos": TODOS os chips, de uma vez
+
+`--todos` é o que o botão "Atualizar todos" da tela dispara (em outro processo, para o navegador não ficar preso).
+Respeita o limite de requisições da API como qualquer ciclo: com 200 chips leva alguns minutos, e o que não couber no
+tempo do ciclo volta para a fila normal. `--usuario` é o login de quem pediu (as consultas ficam gravadas com ele).
 
 Quem roda isto de tempos em tempos é o Agendador de Tarefas do Windows (a tarefa
 não se registra sozinha em produção):
@@ -59,11 +64,26 @@ class Command(BaseCommand):
             help="Intervalo, em minutos, da tarefa do Agendador (só para o painel saber se ela parou). "
                  "Se omitido, o valor gravado não muda.",
         )
+        parser.add_argument(
+            "--todos", action="store_true", dest="todos",
+            help="Atualiza TODOS os chips consultaveis (o 'Atualizar todos' da tela), e nao so os vencidos.",
+        )
+        parser.add_argument(
+            "--usuario", default="", dest="usuario",
+            help="Login de quem pediu o --todos: as consultas ficam gravadas com ele.",
+        )
 
     def handle(self, *args, **options):
         tique = options["tique"]
         if tique is not None and tique < 1:
             raise CommandError("--tique deve ser de pelo menos 1 minuto.")
+        if options["usuario"] and not options["todos"]:
+            raise CommandError("--usuario so vale junto com --todos.")
+
+        if options["todos"]:
+            resumos = [m2m.atualizar_todos(self._usuario(options["usuario"]))]
+            self._relatar(resumos)
+            return
 
         # Só a TAREFA (que informa `--tique`) roda ciclos em sequência até o fim do tique. Uma execução manual, sem
         # `--tique` (o terminal, o `agendar_m2m executar`), faz UM ciclo e volta: senão um teste rápido ficaria preso
@@ -72,6 +92,22 @@ class Command(BaseCommand):
             resumos = [m2m.executar_ciclo("agendada")]
         else:
             resumos = m2m.executar_varios_ciclos("agendada", tique_minutos=tique)
+        self._relatar(resumos)
+
+    @staticmethod
+    def _usuario(login: str):
+        """Quem pediu o `--todos`. Login que não existe é erro, não "anônimo": a consulta sem autor esconderia quem gastou o
+        limite da API."""
+        if not login:
+            return None
+        from django.contrib.auth import get_user_model
+
+        usuario = get_user_model().objects.filter(**{get_user_model().USERNAME_FIELD: login}).first()
+        if usuario is None:
+            raise CommandError(_cp1252(f"Usuario '{login}' nao encontrado."))
+        return usuario
+
+    def _relatar(self, resumos):
         # A tarefa pode rodar vários ciclos seguidos (um por minuto, até o fim do tique): o código de saída
         # é de problema se QUALQUER deles pediu atenção, e o texto é o do último.
         problema = next((r for r in resumos if r.exige_atencao), None)

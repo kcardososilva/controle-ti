@@ -102,13 +102,11 @@ def contratacao_painel(request):
     }
     painel = cs.painel(filtros=filtros)
 
-    # As pendências e o placar são do card, não da consulta: o template não
-    # pode chamar função com argumento, então vêm anexados aqui.
+    # O placar é do card, não da consulta: o template não pode chamar função
+    # com argumento, então vem anexado aqui. A lista de pendências (e o resumo
+    # do processo) saíram do cartão em 15/11/2026 — moram no detalhe da vaga.
     for coluna in painel["colunas"]:
         for card in coluna["cards"]:
-            etapas = cs.etapas_do_processo(card)
-            card.lista_pendencias = cs.pendencias_das(etapas)
-            card.processo = cs.resumo_processo(etapas)
             card.placar = cs.resumo_provisionamento(card)
 
     # Atalho de quem PEDE (o RH): selo "estrutura" em cada vaga em aberto e a

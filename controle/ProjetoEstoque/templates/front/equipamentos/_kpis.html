@@ -1,49 +1,34 @@
 {% load humanize %}
+{% comment %}Faixa de números — sem cartão (pedido de 15/11/2026: tela mais limpa). Substituiu os
+   seis cartões de KPI. Os números que saíram da vista (backup, com lote, consumo, locados) estão
+   nos `title`, que é onde quem quer o detalhe vai olhar. O número vem antes do rótulo na tela
+   (`order: -1`) e depois dele na marcação, que é a ordem em que o leitor de tela lê "Total, 12".
+   Cor só onde há o que dizer: o zero fica apagado.
 
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-brand);">
-    <div class="eq-kpi-icon"><i class="fa fa-layer-group"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">{{ kpis.total }}</span>
-        <div class="eq-kpi-label">Total Filtrado</div>
+   Este fragmento é re-renderizado por AJAX (`kpis` em views/equipamentos.py) e o JS troca o
+   conteúdo de `#kpisWrap`: a marcação vem inteira daqui, nenhum número é escrito pelo JS.{% endcomment %}
+<dl class="eq-numeros">
+    <div class="eq-numeros-item" title="{{ kpis.consumo }} de consumo · {{ kpis.locados }} locados · {{ kpis.com_lote }} com lote">
+        <dt>Total</dt>
+        <dd>{{ kpis.total|intcomma }}</dd>
     </div>
-</div>
 
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-success);">
-    <div class="eq-kpi-icon"><i class="fa fa-circle-check"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">{{ kpis.ativos }} / {{ kpis.backup }}</span>
-        <div class="eq-kpi-label">Ativos / Backup</div>
+    <div class="eq-numeros-item{% if not kpis.ativos %} is-zero{% endif %}" title="{{ kpis.backup }} em backup ou estoque">
+        <dt>Em operação</dt>
+        <dd>{{ kpis.ativos|intcomma }}</dd>
     </div>
-</div>
 
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-warning);">
-    <div class="eq-kpi-icon"><i class="fa fa-screwdriver-wrench"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">{{ kpis.manutencao }} / {{ kpis.defeito }}</span>
-        <div class="eq-kpi-label">Manutenção / Defeito</div>
+    <div class="eq-numeros-item {% if kpis.manutencao or kpis.defeito %}is-alerta{% else %}is-zero{% endif %}"
+         title="{{ kpis.manutencao }} em manutenção · {{ kpis.defeito }} com defeito">
+        <dt>Manutenção ou defeito</dt>
+        <dd>{{ kpis.manutencao|add:kpis.defeito|intcomma }}</dd>
     </div>
-</div>
 
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-muted);">
-    <div class="eq-kpi-icon"><i class="fa fa-boxes-stacked"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">{{ kpis.com_lote }}</span>
-        <div class="eq-kpi-label">Com Lote · {{ kpis.lote_disponivel }} un.</div>
+    {% if kpis.valor_lote_disponivel > 0 %}
+    <div class="eq-numeros-item" title="{{ kpis.lote_disponivel }} un. disponíveis em lotes">
+        <dt>Valor em estoque</dt>
+        {# "2g" agrupa o milhar no formato da localidade (29.790,44). `floatformat:2|intcomma` dava "29,790,44": o intcomma recebe o texto já formatado e põe a vírgula inglesa na parte inteira. #}
+        <dd>R$ {{ kpis.valor_lote_disponivel|floatformat:"2g" }}</dd>
     </div>
-</div>
-
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-muted);">
-    <div class="eq-kpi-icon"><i class="fa fa-box"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">{{ kpis.consumo }} / {{ kpis.locados }}</span>
-        <div class="eq-kpi-label">Consumo / Locados</div>
-    </div>
-</div>
-
-<div class="eq-kpi-card" style="--eq-kpi-color: var(--eq-muted);">
-    <div class="eq-kpi-icon"><i class="fa fa-coins"></i></div>
-    <div class="eq-kpi-body">
-        <span class="eq-kpi-value">R$ {{ kpis.valor_lote_disponivel|floatformat:2|intcomma }}</span>
-        <div class="eq-kpi-label">Valor em Estoque</div>
-    </div>
-</div>
+    {% endif %}
+</dl>

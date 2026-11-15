@@ -588,6 +588,7 @@ from .m2m import (  # noqa: E402
     m2m_config,
 )
 from .m2m_api import (  # noqa: E402
+    m2m_atualizar_todos,
     m2m_chip_atualizar,
     m2m_chip_monitoramento,
     m2m_consulta_payload,
@@ -652,6 +653,7 @@ from .frota_api import (  # noqa: E402
     frota_transferir,
     frota_substituir,
     frota_retornar,
+    frota_situacao,
     frota_inativar,
     frota_opcoes,
     frota_importacao_confirmar,

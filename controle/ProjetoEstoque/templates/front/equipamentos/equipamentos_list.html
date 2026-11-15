@@ -3,7 +3,8 @@
 
 {% block title %}Gestão de Ativos Corporativos{% endblock %}
 {% block page_title %}Ativos Corporativos{% endblock %}
-{% block page_subtitle %}Patrimônio, locação, consumo, lotes e rastreabilidade operacional{% endblock %}
+{% comment %}Sem subtítulo na topbar: o corpo já abre com o título e a linha que o descreve.{% endcomment %}
+{% block page_subtitle %}{% endblock %}
 
 {% block breadcrumbs %}
 <nav class="breadcrumbs" aria-label="Você está aqui">
@@ -23,28 +24,266 @@
 {% endblock %}
 
 {% block content %}
+{% comment %}Tela MINIMALISTA por pedido do usuário (15/11/2026). Ficam à vista só a busca, a
+   área e o status; o resto dos filtros mora em "Mais filtros". Os seis cartões de KPI viraram
+   uma faixa de números, e a tabela perdeu o Fornecedor (continua no filtro, na galeria, no
+   detalhe e na exportação) e a barra de saldo, que virou uma linha dentro do Ativo.{% endcomment %}
 <div class="equipment-page">
     <div class="equipment-shell">
 
-        <section class="page-header page-header-compact" aria-labelledby="eq-hero-title">
+        <section class="page-header page-header-compact eq-topo" aria-labelledby="eq-hero-title">
             <div class="page-header-main">
-                <div class="page-kicker">
-                    <i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i>
-                    Patrimônio &amp; TI
-                </div>
                 <h2 class="page-heading" id="eq-hero-title">Ativos Corporativos</h2>
-                <p class="page-description">
-                    Equipamentos, locação, consumo, lotes e licenças vinculadas em uma base única — com rastreabilidade de ponta a ponta para todo o patrimônio de TI.
-                </p>
+                <p class="page-description">Equipamentos, locação, consumo e lotes em uma base só.</p>
+            </div>
+
+            <div class="page-header-aside eq-acoes">
+                <form
+                    id="formImportar"
+                    method="post"
+                    enctype="multipart/form-data"
+                    action="{% url 'importar_planilha' %}"
+                    hidden>
+                    {% csrf_token %}
+                    <input type="file" name="arquivo" id="inputArquivo" accept=".xlsx">
+                </form>
+
+                <button type="button" class="eq-btn eq-btn-quiet" id="btnImportar" title="Importar planilha">
+                    <i class="fa fa-upload" aria-hidden="true"></i>
+                    <span class="btn-import-text">Importar</span>
+                </button>
+
+                <a href="{% static 'planilhas/modelo_cadastro_item.xlsx' %}"
+                   class="eq-btn eq-btn-quiet"
+                   title="Baixar modelo de planilha para cadastro/atualização de itens"
+                   download>
+                    <i class="fa fa-file-arrow-down" aria-hidden="true"></i>
+                    <span class="btn-import-text">Modelo</span>
+                </a>
+
+                <a id="exportBtn"
+                   data-export-base="{% url 'equipamentos_exportar' %}"
+                   class="eq-btn eq-btn-quiet"
+                   href="{% url 'equipamentos_exportar' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+                   title="Exportar para Excel">
+                    <i class="fa fa-file-excel" aria-hidden="true"></i>
+                    Exportar
+                </a>
+
+                <a href="{% url 'cadastrar_equipamento' %}" class="eq-btn eq-btn-primary" id="btnNovoAtivo" title="Cadastrar novo ativo">
+                    <i class="fa fa-plus" aria-hidden="true"></i>
+                    Novo ativo
+                </a>
             </div>
         </section>
 
-        <section class="eq-toolbar" aria-label="Ações e exibição">
-            <div class="eq-toolbar-lead">
-                <span class="eq-result-count" id="countResults">{{ filtered_total }} resultado(s)</span>
+        <section id="kpisWrap" class="eq-numeros-wrap" aria-label="Indicadores dos ativos">
+            {% include "front/equipamentos/_kpis.html" %}
+        </section>
+
+        <form id="filtrosForm" class="eq-barra" aria-label="Filtros dos ativos" onsubmit="event.preventDefault(); refreshList({ page: 1 });">
+
+            <div class="eq-barra-linha">
+                <div class="eq-busca">
+                    <label class="eq-sr-only" for="filtro-nome">Buscar por nome</label>
+                    <i class="fa fa-search" aria-hidden="true"></i>
+                    <input type="text" name="nome" id="filtro-nome" placeholder="Nome do ativo..." value="{{ request.GET.nome|default:'' }}" autocomplete="off">
+                </div>
+
+                {% comment %}Busca por nº de série fica À VISTA, ao lado da busca por nome: é como o time
+                   procura equipamento no dia a dia (pedido de 15/11/2026). Era um campo de "Mais filtros".
+                   Mesmo `name`/`id` de sempre, então a URL, a exportação e o JS não mudam.{% endcomment %}
+                <div class="eq-busca eq-busca--serie">
+                    <label class="eq-sr-only" for="filtro-num-serie">Buscar por número de série</label>
+                    <i class="fa fa-barcode" aria-hidden="true"></i>
+                    <input type="text" name="numero_serie" id="filtro-num-serie" placeholder="Nº de série..." value="{{ request.GET.numero_serie|default:'' }}" autocomplete="off">
+                </div>
+
+                {% comment %}Área de operação (Item.area_operacional). "Sem área" é o estado NÃO CLASSIFICADO
+                   (regra 47a) — não é um valor do campo, e existe para o gestor chegar aos que ainda esperam
+                   classificação. São rádios dentro do form: o FormData do JS já os leva para a URL e o AJAX.{% endcomment %}
+                <fieldset class="eq-segmento" id="areaWrap">
+                    <legend class="eq-sr-only">Área de operação</legend>
+                    <label class="eq-segmento-opcao">
+                        <input type="radio" name="area" value=""{% if not area_sel %} checked{% endif %}>
+                        <span>Todas</span>
+                    </label>
+                    {% for valor, rotulo in area_opcoes %}
+                    <label class="eq-segmento-opcao is-{{ valor }}">
+                        <input type="radio" name="area" value="{{ valor }}"{% if area_sel == valor %} checked{% endif %}>
+                        <span>{{ rotulo }}</span>
+                    </label>
+                    {% endfor %}
+                </fieldset>
+
+                <button type="button" id="btnLimpar" class="eq-link"{% if not tem_filtro %} hidden{% endif %}>
+                    <i class="fa fa-eraser" aria-hidden="true"></i>
+                    Limpar
+                </button>
             </div>
 
-            <div class="eq-toolbar-actions">
+            <div class="eq-barra-linha eq-barra-linha--status">
+                <div class="eq-chip-row" id="chipsWrap" aria-label="Atalhos de status">
+                    <a href="#" class="eq-chip {% if not status_sel %}is-active{% endif %}" data-val="">Todos</a>
+                    {% for valor, rotulo in status_atalhos %}
+                        <a href="#" class="eq-chip {% if status_sel == valor %}is-active{% endif %}" data-val="{{ valor }}">{{ rotulo }}</a>
+                    {% endfor %}
+                </div>
+
+                <button type="button" id="btnMaisFiltros" class="eq-link eq-mais-btn"
+                        aria-expanded="{% if filtros_avancados %}true{% else %}false{% endif %}" aria-controls="filtrosAvancados">
+                    <i class="fa fa-sliders" aria-hidden="true"></i>
+                    Mais filtros
+                    <span class="eq-filters-badge" id="filtrosBadge"{% if not filtros_avancados %} hidden{% endif %}
+                          title="Filtros aplicados aqui dentro"><span id="filtrosBadgeText">{{ filtros_avancados }}</span></span>
+                    <i class="fa fa-chevron-down eq-mais-seta" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="eq-avancados" id="filtrosAvancados"{% if not filtros_avancados %} hidden{% endif %}>
+                <div class="eq-filter-group-fields">
+
+                    <div class="eq-filter-field eq-filter-field--wide{% if subtipo_exc %} is-exceto{% endif %}">
+                        <label class="eq-filter-label" for="filtro-subtipo"><i class="fa fa-tags" aria-hidden="true"></i>Subtipo</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="subtipo" id="filtro-subtipo" multiple class="select2-enable" data-placeholder="Todos">
+                                    {% for sub in subtipos %}
+                                        <option value="{{ sub.id }}" data-icone="{{ sub.nome|zelo_icone_id:'ti' }}" {% if sub.id|stringformat:"s" in subtipo_sel %}selected{% endif %}>
+                                            {{ sub.nome|default:sub }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos os subtipos marcados">
+                                <input type="checkbox" name="subtipo_exc" id="filtro-subtipo-exc" value="1" {% if subtipo_exc %}checked{% endif %}>
+                                <i class="fa fa-ban" aria-hidden="true"></i>
+                                Exceto
+                                <span class="eq-sr-only">— inverter seleção de Subtipo</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field eq-filter-field--wide{% if localidade_exc %} is-exceto{% endif %}">
+                        <label class="eq-filter-label" for="filtro-localidade"><i class="fa fa-location-dot" aria-hidden="true"></i>Localidade</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="localidade" id="filtro-localidade" multiple class="select2-enable" data-placeholder="Todas">
+                                    {% for loc in localidades %}
+                                        <option value="{{ loc.id }}" {% if loc.id|stringformat:"s" in localidade_sel %}selected{% endif %}>
+                                            {{ loc.local }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos as localidades marcadas">
+                                <input type="checkbox" name="localidade_exc" id="filtro-localidade-exc" value="1" {% if localidade_exc %}checked{% endif %}>
+                                <i class="fa fa-ban" aria-hidden="true"></i>
+                                Exceto
+                                <span class="eq-sr-only">— inverter seleção de Localidade</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field eq-filter-field--wide{% if centro_custo_exc %} is-exceto{% endif %}">
+                        <label class="eq-filter-label" for="filtro-centro-custo"><i class="fa fa-building" aria-hidden="true"></i>Centro de Custo</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="centro_custo" id="filtro-centro-custo" multiple class="select2-enable" data-placeholder="Todos">
+                                    {% for cc in centros_custo %}
+                                        <option value="{{ cc.id }}" {% if cc.id|stringformat:"s" in centro_custo_sel %}selected{% endif %}>
+                                            {{ cc.numero }} - {{ cc.departamento }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos os centros de custo marcados">
+                                <input type="checkbox" name="centro_custo_exc" id="filtro-centro-custo-exc" value="1" {% if centro_custo_exc %}checked{% endif %}>
+                                <i class="fa fa-ban" aria-hidden="true"></i>
+                                Exceto
+                                <span class="eq-sr-only">— inverter seleção de Centro de Custo</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {% comment %}O atalho da barra e este select são o MESMO filtro (`status`): o JS mantém os dois
+                       em sincronia. O select existe porque tem mais status do que os atalhos.{% endcomment %}
+                    <div class="eq-filter-field">
+                        <label class="eq-filter-label" for="filtro-status"><i class="fa fa-circle-check" aria-hidden="true"></i>Status</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="status" id="filtro-status" class="select2-enable" data-placeholder="Todos">
+                                    <option value="">Todos</option>
+                                    {% for code, label in status_choices %}
+                                        <option value="{{ code }}" {% if status_sel == code %}selected{% endif %}>
+                                            {{ label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field">
+                        <label class="eq-filter-label" for="filtro-tipo-item"><i class="fa fa-layer-group" aria-hidden="true"></i>Tipo</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="tipo_item" id="filtro-tipo-item" class="select2-enable" data-placeholder="Todos">
+                                    <option value="">Todos</option>
+                                    <option value="patrimonio" {% if request.GET.tipo_item == "patrimonio" %}selected{% endif %}>Patrimônio</option>
+                                    <option value="consumo" {% if request.GET.tipo_item == "consumo" %}selected{% endif %}>Item de Consumo</option>
+                                    <option value="locado" {% if request.GET.tipo_item == "locado" %}selected{% endif %}>Locado</option>
+                                    <option value="com_lote" {% if request.GET.tipo_item == "com_lote" %}selected{% endif %}>Com Lote</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field">
+                        <label class="eq-filter-label" for="filtro-estoque"><i class="fa fa-boxes-stacked" aria-hidden="true"></i>Estoque</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <select name="estoque" id="filtro-estoque" class="select2-enable" data-placeholder="Todos">
+                                    <option value="">Todos</option>
+                                    <option value="com_saldo" {% if request.GET.estoque == "com_saldo" %}selected{% endif %}>Com saldo</option>
+                                    <option value="zerado" {% if request.GET.estoque == "zerado" %}selected{% endif %}>Zerado</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field">
+                        <label class="eq-filter-label" for="filtro-modelo"><i class="fa fa-cube" aria-hidden="true"></i>Modelo</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <input type="text" name="modelo" id="filtro-modelo" placeholder="Ex: ThinkPad E14..." value="{{ request.GET.modelo|default:'' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="eq-filter-field">
+                        <label class="eq-filter-label" for="filtro-fornecedor"><i class="fa fa-truck" aria-hidden="true"></i>Fornecedor</label>
+                        <div class="eq-filter-control-row">
+                            <div class="eq-filter-control">
+                                <input type="text" name="fornecedor" id="filtro-fornecedor" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </form>
+
+        <section class="eq-table-card" aria-label="Listagem de ativos cadastrados">
+            <div id="tableLoader" class="eq-table-loading" aria-live="polite">
+                <i class="fa fa-circle-notch fa-spin" aria-hidden="true"></i>
+                Atualizando ativos...
+            </div>
+
+            <!-- Contagem, itens por página e modo de exibição -->
+            <div class="eq-view-toolbar">
+                <span class="eq-result-count" id="countResults">{{ filtered_total }} resultado(s)</span>
+
                 <form id="sizeForm" class="eq-size-form">
                     {% for key, val in request.GET.items %}
                         {% if key != 'pp' and key != 'page' %}
@@ -60,258 +299,6 @@
                     </select>
                 </form>
 
-                <span class="eq-toolbar-divider" aria-hidden="true"></span>
-
-                <form
-                    id="formImportar"
-                    method="post"
-                    enctype="multipart/form-data"
-                    action="{% url 'importar_planilha' %}"
-                    hidden>
-                    {% csrf_token %}
-                    <input type="file" name="arquivo" id="inputArquivo" accept=".xlsx">
-                </form>
-
-                <button type="button" class="eq-btn eq-btn-outline" id="btnImportar" title="Importar planilha">
-                    <i class="fa fa-upload" aria-hidden="true"></i>
-                    <span class="btn-import-text">Importar</span>
-                </button>
-
-                <a href="{% static 'planilhas/modelo_cadastro_item.xlsx' %}"
-                   class="eq-btn eq-btn-outline"
-                   title="Baixar modelo de planilha para cadastro/atualização de itens"
-                   download>
-                    <i class="fa fa-file-arrow-down" aria-hidden="true"></i>
-                    <span class="btn-import-text">Modelo</span>
-                </a>
-
-                <a id="exportBtn"
-                   data-export-base="{% url 'equipamentos_exportar' %}"
-                   class="eq-btn eq-btn-outline"
-                   href="{% url 'equipamentos_exportar' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
-                   title="Exportar para Excel">
-                    <i class="fa fa-file-excel" aria-hidden="true"></i>
-                    Exportar
-                </a>
-
-                <span class="eq-toolbar-divider" aria-hidden="true"></span>
-
-                <a href="{% url 'cadastrar_equipamento' %}" class="eq-btn eq-btn-primary" id="btnNovoAtivo" title="Cadastrar novo ativo">
-                    <i class="fa fa-plus" aria-hidden="true"></i>
-                    Novo Ativo
-                </a>
-            </div>
-        </section>
-
-        <section id="kpisWrap" class="eq-kpi-grid" aria-label="Indicadores dos ativos">
-            {% include "front/equipamentos/_kpis.html" %}
-        </section>
-
-        <details class="eq-panel eq-filters" {% if request.GET %}open{% endif %}>
-            <summary class="eq-filters-summary">
-                <span class="eq-filters-summary-icon"><i class="fa fa-sliders" aria-hidden="true"></i></span>
-                Filtros de Busca
-                <span class="eq-filters-badge" id="filtrosBadge"{% if not filtros_ativos %} hidden{% endif %}>
-                    <i class="fa fa-filter" aria-hidden="true"></i>
-                    <span id="filtrosBadgeText">{{ filtros_ativos }} filtro{{ filtros_ativos|pluralize }} ativo{{ filtros_ativos|pluralize }}</span>
-                </span>
-                <i class="fa fa-chevron-down" aria-hidden="true"></i>
-            </summary>
-
-            <div class="eq-filters-body">
-                <form id="filtrosForm" onsubmit="event.preventDefault(); refreshList({ page: 1 });">
-
-                    <!-- clusters temáticos -->
-                    <div class="eq-filter-groups">
-
-                        <div class="eq-filter-group">
-                            <div class="eq-filter-group-head">
-                                <span class="eq-filter-group-title">Classificação</span>
-                                <button type="button" id="btnLimpar" class="eq-filter-clear">
-                                    <i class="fa fa-eraser" aria-hidden="true"></i>
-                                    Limpar filtros
-                                </button>
-                            </div>
-                            <div class="eq-filter-group-fields">
-                                <div class="eq-filter-field eq-filter-field--wide eq-filter-field--search">
-                                    <label class="eq-filter-label" for="filtro-nome"><i class="fa fa-search" aria-hidden="true"></i>Buscar por nome</label>
-                                    <div class="eq-filter-control-row">
-                                        <span class="eq-filter-search-icon" aria-hidden="true"><i class="fa fa-search"></i></span>
-                                        <div class="eq-filter-control">
-                                            <input type="text" name="nome" id="filtro-nome" placeholder="Digite o nome do ativo..." value="{{ request.GET.nome|default:'' }}">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field eq-filter-field--wide{% if subtipo_exc %} is-exceto{% endif %}">
-                                    <label class="eq-filter-label" for="filtro-subtipo"><i class="fa fa-tags" aria-hidden="true"></i>Subtipo</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="subtipo" id="filtro-subtipo" multiple class="select2-enable" data-placeholder="Todas">
-                                                {% for sub in subtipos %}
-                                                    <option value="{{ sub.id }}" data-icone="{{ sub.nome|zelo_icone_id:'ti' }}" {% if sub.id|stringformat:"s" in subtipo_sel %}selected{% endif %}>
-                                                        {{ sub.nome|default:sub }}
-                                                    </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                        <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos os subtipos marcados">
-                                            <input type="checkbox" name="subtipo_exc" id="filtro-subtipo-exc" value="1" {% if subtipo_exc %}checked{% endif %}>
-                                            <i class="fa fa-ban" aria-hidden="true"></i>
-                                            Exceto
-                                            <span class="eq-sr-only">— inverter seleção de Subtipo</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-status"><i class="fa fa-circle-check" aria-hidden="true"></i>Status</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="status" id="filtro-status" class="select2-enable" data-placeholder="Todos">
-                                                <option value="">Todos</option>
-                                                {% for code, label in status_choices %}
-                                                    <option value="{{ code }}" {% if request.GET.status == code %}selected{% endif %}>
-                                                        {{ label }}
-                                                    </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-tipo-item"><i class="fa fa-layer-group" aria-hidden="true"></i>Tipo</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="tipo_item" id="filtro-tipo-item" class="select2-enable" data-placeholder="Todos">
-                                                <option value="">Todos</option>
-                                                <option value="patrimonio" {% if request.GET.tipo_item == "patrimonio" %}selected{% endif %}>Patrimônio</option>
-                                                <option value="consumo" {% if request.GET.tipo_item == "consumo" %}selected{% endif %}>Item de Consumo</option>
-                                                <option value="locado" {% if request.GET.tipo_item == "locado" %}selected{% endif %}>Locado</option>
-                                                <option value="com_lote" {% if request.GET.tipo_item == "com_lote" %}selected{% endif %}>Com Lote</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-estoque"><i class="fa fa-boxes-stacked" aria-hidden="true"></i>Estoque</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="estoque" id="filtro-estoque" class="select2-enable" data-placeholder="Todos">
-                                                <option value="">Todos</option>
-                                                <option value="com_saldo" {% if request.GET.estoque == "com_saldo" %}selected{% endif %}>Com saldo</option>
-                                                <option value="zerado" {% if request.GET.estoque == "zerado" %}selected{% endif %}>Zerado</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="eq-filter-group">
-                            <div class="eq-filter-group-head">
-                                <span class="eq-filter-group-title">Identificação, local &amp; custo</span>
-                            </div>
-                            <div class="eq-filter-group-fields">
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-num-serie"><i class="fa fa-barcode" aria-hidden="true"></i>Nº Série</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <input type="text" name="numero_serie" id="filtro-num-serie" placeholder="Ex: SN123..." value="{{ request.GET.numero_serie|default:'' }}">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-modelo"><i class="fa fa-cube" aria-hidden="true"></i>Modelo</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <input type="text" name="modelo" id="filtro-modelo" placeholder="Ex: ThinkPad E14..." value="{{ request.GET.modelo|default:'' }}">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field">
-                                    <label class="eq-filter-label" for="filtro-fornecedor"><i class="fa fa-truck" aria-hidden="true"></i>Fornecedor</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <input type="text" name="fornecedor" id="filtro-fornecedor" placeholder="Buscar fornecedor..." value="{{ request.GET.fornecedor|default:'' }}">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field eq-filter-field--wide{% if localidade_exc %} is-exceto{% endif %}">
-                                    <label class="eq-filter-label" for="filtro-localidade"><i class="fa fa-location-dot" aria-hidden="true"></i>Localidade</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="localidade" id="filtro-localidade" multiple class="select2-enable" data-placeholder="Todas">
-                                                {% for loc in localidades %}
-                                                    <option value="{{ loc.id }}" {% if loc.id|stringformat:"s" in localidade_sel %}selected{% endif %}>
-                                                        {{ loc.local }}
-                                                    </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                        <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos as localidades marcadas">
-                                            <input type="checkbox" name="localidade_exc" id="filtro-localidade-exc" value="1" {% if localidade_exc %}checked{% endif %}>
-                                            <i class="fa fa-ban" aria-hidden="true"></i>
-                                            Exceto
-                                            <span class="eq-sr-only">— inverter seleção de Localidade</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="eq-filter-field eq-filter-field--wide{% if centro_custo_exc %} is-exceto{% endif %}">
-                                    <label class="eq-filter-label" for="filtro-centro-custo"><i class="fa fa-building" aria-hidden="true"></i>Centro de Custo</label>
-                                    <div class="eq-filter-control-row">
-                                        <div class="eq-filter-control">
-                                            <select name="centro_custo" id="filtro-centro-custo" multiple class="select2-enable" data-placeholder="Todos">
-                                                {% for cc in centros_custo %}
-                                                    <option value="{{ cc.id }}" {% if cc.id|stringformat:"s" in centro_custo_sel %}selected{% endif %}>
-                                                        {{ cc.numero }} - {{ cc.departamento }}
-                                                    </option>
-                                                {% endfor %}
-                                            </select>
-                                        </div>
-                                        <label class="eq-exc-toggle" title="Exceto: mostra tudo, menos os centros de custo marcados">
-                                            <input type="checkbox" name="centro_custo_exc" id="filtro-centro-custo-exc" value="1" {% if centro_custo_exc %}checked{% endif %}>
-                                            <i class="fa fa-ban" aria-hidden="true"></i>
-                                            Exceto
-                                            <span class="eq-sr-only">— inverter seleção de Centro de Custo</span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </form>
-
-                <div class="eq-chip-row" id="chipsWrap" aria-label="Atalhos de status">
-                    <span class="eq-chip-row-label">Atalhos</span>
-                    {% with s=request.GET.status|default:'' %}
-                        <a href="#" class="eq-chip {% if not s %}is-active{% endif %}" data-val="">Todos</a>
-                        <a href="#" class="eq-chip {% if s == 'ativo' %}is-active{% endif %}" data-val="ativo">Ativos</a>
-                        <a href="#" class="eq-chip {% if s == 'backup' %}is-active{% endif %}" data-val="backup">Backup</a>
-                        <a href="#" class="eq-chip {% if s == 'estoque' %}is-active{% endif %}" data-val="estoque">Estoque</a>
-                        <a href="#" class="eq-chip {% if s == 'manutencao' %}is-active{% endif %}" data-val="manutencao">Manutenção</a>
-                        <a href="#" class="eq-chip {% if s == 'pausado' %}is-active{% endif %}" data-val="pausado">Pausado</a>
-                        <a href="#" class="eq-chip {% if s == 'defeito' %}is-active{% endif %}" data-val="defeito">Defeito</a>
-                    {% endwith %}
-                </div>
-            </div>
-        </details>
-
-        <section class="eq-table-card" aria-label="Listagem de ativos cadastrados">
-            <div id="tableLoader" class="eq-table-loading" aria-live="polite">
-                <i class="fa fa-circle-notch fa-spin" aria-hidden="true"></i>
-                Atualizando ativos...
-            </div>
-
-            <!-- View toggle toolbar -->
-            <div class="eq-view-toolbar">
                 <div class="eq-view-toggle" role="group" aria-label="Modo de visualização">
                     <button id="btnViewList" class="eq-view-btn is-active"
                             title="Visualização em lista"
@@ -336,8 +323,6 @@
                                 <th data-col="1" scope="col">Tipo</th>
                                 <th data-col="2" scope="col">Status</th>
                                 <th data-col="3" scope="col">Localidade / CC</th>
-                                <th data-col="4" scope="col">Fornecedor</th>
-                                <th data-col="5" scope="col">Lotes / Saldo</th>
                                 <th scope="col" style="text-align: right;">Ações</th>
                             </tr>
                         </thead>

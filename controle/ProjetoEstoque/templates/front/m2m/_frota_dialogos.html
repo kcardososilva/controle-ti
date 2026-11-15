@@ -1,6 +1,7 @@
+{% load m2m_tags %}
 {% comment %}
 Os diálogos das AÇÕES de movimentação (vincular, desvincular, transferir, substituir, devolver,
-inativar) e o de mudança de status do veículo. Incluído pelo detalhe do veículo e pelo detalhe do chip.
+mudar situação, inativar) e o de mudança de status do veículo. Incluído pelo detalhe do veículo e pelo detalhe do chip.
 
 Cada diálogo é um formulário POST com CSRF; o `frota.js` o envia por fetch e mostra o erro do servidor
 DENTRO dele (sem fechar). O botão que abre traz `data-frota-abrir="<nome>"`, `data-url` (a rota da
@@ -55,7 +56,7 @@ tem a permissão da ação — esconder não é autorizar, a view confere de nov
     <div class="m2m-dialogo-corpo">
       <p class="m2m-dialogo-alvo" data-frota-alvo></p>
       <label class="m2m-rotulo"><span>Depois de desvincular, o chip fica</span>
-        <select name="destino" class="m2m-campo"><option value="disponivel">Disponível</option><option value="manutencao">Em manutenção</option></select>
+        <select name="destino" class="m2m-campo">{% situacoes_livres_do_chip as destinos %}{% for valor, rotulo in destinos %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}</select>
         <em class="m2m-dica">O chip não é excluído: o cadastro, {% if pode_ver_api %}o histórico de consultas {% endif %}e os vínculos anteriores continuam guardados.</em>
       </label>
       <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: veículo vendido"></label>
@@ -93,7 +94,7 @@ tem a permissão da ação — esconder não é autorizar, a view confere de nov
         <em class="m2m-dica">O chip novo entra no MESMO veículo. As duas movimentações ficam ligadas pela mesma operação.</em>
       </label>
       <label class="m2m-rotulo"><span>O chip substituído fica</span>
-        <select name="destino_antigo" class="m2m-campo"><option value="disponivel">Disponível</option><option value="manutencao">Em manutenção</option></select>
+        <select name="destino_antigo" class="m2m-campo">{% situacoes_livres_do_chip as destinos %}{% for valor, rotulo in destinos %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}</select>
       </label>
       <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: chip com defeito de leitura"></label>
       <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
@@ -118,6 +119,23 @@ tem a permissão da ação — esconder não é autorizar, a view confere de nov
       <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
     </div>
     <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Devolver</button></footer>
+  </form>
+</div>
+
+<div class="m2m-modal m2m-dialogo" id="frota-dlg-situacao" data-frota-dialogo role="dialog" aria-modal="true" aria-labelledby="frota-dlg-situacao-t" hidden>
+  <form method="post" action="" class="m2m-dialogo-form" data-frota-form novalidate>
+    {% csrf_token %}<input type="hidden" name="voltar" value="{{ voltar }}">
+    <header class="m2m-dialogo-cab"><h3 id="frota-dlg-situacao-t">Mudar a situação do chip</h3><button type="button" class="m2m-btn m2m-btn--sm" data-frota-fechar>Fechar</button></header>
+    <div class="m2m-dialogo-corpo">
+      <p class="m2m-dialogo-alvo" data-frota-alvo></p>
+      <label class="m2m-rotulo"><span>Nova situação *</span>
+        <select name="situacao" class="m2m-campo">{% situacoes_livres_do_chip as destinos %}{% for valor, rotulo in destinos %}<option value="{{ valor }}">{{ rotulo }}</option>{% endfor %}</select>
+        <em class="m2m-dica">É decisão de quem opera o chip: nada muda sozinho{% if pode_ver_api %}, e uma sessão caída não muda a situação{% endif %}. A mudança fica no histórico, com o motivo e quem fez.</em>
+      </label>
+      <label class="m2m-rotulo"><span>Motivo *</span><input type="text" name="motivo" class="m2m-campo" maxlength="255" required autocomplete="off" placeholder="Ex.: SIM não lê no aparelho"></label>
+      <p class="m2m-dialogo-erro" data-frota-erro role="alert" hidden></p>
+    </div>
+    <footer class="m2m-dialogo-rodape"><button type="button" class="m2m-btn" data-frota-fechar>Cancelar</button><button type="submit" class="m2m-btn m2m-btn--primario">Mudar situação</button></footer>
   </form>
 </div>
 

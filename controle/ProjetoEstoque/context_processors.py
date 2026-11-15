@@ -101,7 +101,20 @@
 # 2026-11-14j: base.css + tokens.css — o verde que ele mandou no Zelo Agro (menu em degradê #1f836a→#3cab88, marca #1f836a);
 #   agro-mapa.js — o painel do chip só desenha o estado da sessão quando o JSON o traz (Portal do Colaborador, sem API);
 #   notificacoes-ajax.js — comentário sem tag de template (o teste de estáticos recusa `{% ... %}` literal).
-ASSETS_VERSION = "20261114j"
+# 2026-11-15a: ds-m2m.css + m2m.js — chips: situação reservado/pausado/com defeito (pontos do `.m2m-status`) e a seção "Situação e
+#   acompanhamento"; "Atualizar todos" na faixa de sincronização, com o andamento "X de N" lido do banco a cada 5 s.
+#   ds-contratacoes.css — painel de Contratações minimalista (faixa única `.ctr-numeros` no lugar do herói + 4 KPIs, filtros leves,
+#   cartão da vaga só com o essencial). Sem subir aqui, a faixa nova abre sem estilo e o quadro com o desenho antigo.
+# 2026-11-15b: equipamentos-list.css + equipamentos-list.js — lista de ativos enxuta (faixa `.eq-numeros` no lugar dos 6 cartões, barra
+#   de filtros com a Área de operação em controle segmentado e "Mais filtros" recolhido, tabela de 5 colunas). Sem subir aqui, a tela
+#   nova abre com o CSS antigo e sem a barra.
+# 2026-11-15c: ds-preventivas.css — Responsáveis por Área: cartão por técnico com a lista de equipamentos (`.pvc-tec*`, `.pvc-eq*`,
+#   `.pvc-tag`) e o cadastro recolhido em "Gerenciar responsáveis". Sem subir aqui, a lista abre sem estilo.
+# 2026-11-15d: equipamentos-list.css + equipamentos-list.js — busca por nº de série à vista ao lado da busca por nome; mobile da lista de
+#   ativos (a linha "S/N · marca / modelo" vazava do cartão da linha; cartão mais compacto).
+# 2026-11-15e: equipamentos-list.css — causa do S/N cortado no celular (o `white-space: nowrap` global de `td` é herdado: a célula do cartão
+#   passa a devolver a quebra), cartão mais compacto e ação principal primeiro; ds-preventivas.css — lista do técnico em celular.
+ASSETS_VERSION = "20261115e"
 
 
 def assets(request):

@@ -73,8 +73,14 @@ logger = logging.getLogger(__name__)
 
 Tipo = FrotaMovimentacao.Tipo
 Uso = M2MChip.SituacaoUso
-DESTINOS_DO_CHIP = (Uso.DISPONIVEL.value, Uso.MANUTENCAO.value)   # para onde o chip vai ao sair do veículo
+# Situações em que o chip está LIVRE (sem vínculo, monitorado): é para onde ele vai ao sair do veículo/equipamento
+# e entre elas que `mudar_situacao` o move. `inativo` fica de fora (desliga o monitoramento: `inativar`/`retornar_disponibilidade`).
+SITUACOES_LIVRES = (Uso.DISPONIVEL.value, Uso.RESERVADO.value, Uso.PAUSADO.value, Uso.DEFEITO.value, Uso.MANUTENCAO.value)
+DESTINOS_DO_CHIP = SITUACOES_LIVRES   # para onde o chip vai ao sair do veículo
+# Situações em que o chip NÃO pode ser vinculado até voltar à disponibilidade (o reservado pode: é para isso que se reserva).
+SITUACOES_QUE_NAO_VINCULAM = (Uso.MANUTENCAO.value, Uso.DEFEITO.value, Uso.PAUSADO.value, Uso.INATIVO.value)
 MOTIVO_MAXIMO = 255
+_MENSAGEM_DESTINO_DO_CHIP = "Escolha para onde o chip vai: disponível, reservado, pausado, com defeito ou em manutenção."
 
 
 @dataclass
@@ -283,15 +289,23 @@ _EVENTO_DO_TIPO = {
     Tipo.SUBSTITUICAO: M2MEvento.Tipo.SUBSTITUIDO,
     Tipo.RETORNO: M2MEvento.Tipo.RETORNO_DISPONIBILIDADE,
     Tipo.INATIVACAO: M2MEvento.Tipo.INATIVADO,
+    Tipo.SITUACAO: M2MEvento.Tipo.SITUACAO_MUDOU,
 }
+
+
+def _rotulo_da_situacao(valor: str) -> str:
+    return dict(Uso.choices).get(valor, valor)
 
 
 def _gravar_evento(mov: FrotaMovimentacao, chip: M2MChip, usuario) -> None:
     """Espelha a movimentação em `M2MEvento` (a trilha do chip) — o id dela vai em `dados`.
     `veiculo_*` continua como sempre foi (eventos antigos e leituras que dependem dele); `origem_texto`
-    e `destino_texto` dizem o lugar com o tipo ("veículo X" / "equipamento Y") para a frase da trilha."""
+    e `destino_texto` dizem o lugar com o tipo ("veículo X" / "equipamento Y") para a frase da trilha.
+    `situacao_anterior` é a situação de ANTES (a que `_gravar_situacao` deixou no chip; sem ela, a operação não
+    mudou a situação) — o evento antigo não a tem, e a trilha continua legível sem."""
     origem = _Destino(veiculo=mov.veiculo_origem, item=mov.item_origem) if (mov.veiculo_origem_id or mov.item_origem_id) else None
     destino = _Destino(veiculo=mov.veiculo_destino, item=mov.item_destino) if (mov.veiculo_destino_id or mov.item_destino_id) else None
+    anterior = getattr(chip, "_situacao_anterior", chip.situacao_uso)
     M2MEvento.objects.create(
         chip=chip, tipo=_EVENTO_DO_TIPO[mov.tipo], usuario=usuario, em=mov.em,
         dados={
@@ -300,14 +314,23 @@ def _gravar_evento(mov: FrotaMovimentacao, chip: M2MChip, usuario) -> None:
             "origem_texto": origem.completo if origem else "", "destino_texto": destino.completo if destino else "",
             "chip_relacionado": mov.chip_relacionado.nome if mov.chip_relacionado_id else "",
             "situacao_uso": chip.situacao_uso, "situacao_uso_rotulo": chip.get_situacao_uso_display(),
+            "situacao_anterior": anterior, "situacao_anterior_rotulo": _rotulo_da_situacao(anterior),
         },
     )
 
 
 def _gravar_situacao(chip: M2MChip, nova: str, usuario, agora) -> None:
-    """ÚNICO ponto do sistema que escreve `situacao_uso`."""
+    """ÚNICO ponto do sistema que escreve `situacao_uso`. `situacao_uso_em` (desde quando) só anda quando a situação
+    MUDA de fato — transferir um chip vinculado não zera o "há N dias". A situação de antes fica em
+    `chip._situacao_anterior` para `_gravar_evento`, que roda logo depois com o mesmo objeto."""
+    anterior = chip.situacao_uso
+    campos = {"situacao_uso": nova, "atualizado_por": usuario, "updated_at": agora}
+    if nova != anterior or chip.situacao_uso_em is None:
+        campos["situacao_uso_em"] = agora
+        chip.situacao_uso_em = agora
+    chip._situacao_anterior = anterior
     chip.situacao_uso = nova
-    M2MChip.objects.filter(pk=chip.pk).update(situacao_uso=nova, atualizado_por=usuario, updated_at=agora)
+    M2MChip.objects.filter(pk=chip.pk).update(**campos)
 
 
 def _abrir_vinculo(chip, destino: _Destino, usuario, mov, agora) -> FrotaVinculo:
@@ -386,17 +409,19 @@ def _conferir_destino_recebe(destino: _Destino) -> list[str]:
 
 
 def _conferir_chip_para_vincular(chip: M2MChip) -> None:
-    """O chip precisa estar disponível, sem vínculo ativo e não inativo."""
+    """O chip precisa estar livre, sem vínculo ativo e em situação que aceite vínculo: disponível ou reservado
+    (reservar é separar o chip para alguém, então o vínculo é o fim esperado da reserva). Em manutenção, com defeito,
+    pausado ou inativo ele volta antes à disponibilidade."""
     ativo = _vinculo_ativo_do_chip(chip)
     if ativo is not None or chip.situacao_uso == Uso.VINCULADO:
         onde = f" ao {_destino_do_vinculo(ativo).completo} desde {_quando(ativo.inicio_em)}" if ativo else ""
         raise ValidationError(
             f"Este chip já está vinculado{onde}. Para mudá-lo de lugar, use transferir ou substituir."
         )
-    if chip.situacao_uso == Uso.MANUTENCAO:
-        raise ValidationError("Este chip está em manutenção. Devolva-o à disponibilidade antes de vinculá-lo.")
-    if chip.situacao_uso == Uso.INATIVO:
-        raise ValidationError("Este chip está inativo. Devolva-o à disponibilidade antes de vinculá-lo.")
+    if chip.situacao_uso in SITUACOES_QUE_NAO_VINCULAM:
+        raise ValidationError(
+            f"Este chip está {chip.get_situacao_uso_display().lower()}. Devolva-o à disponibilidade antes de vinculá-lo."
+        )
 
 
 def _avisar_evento(tipo: str, chip: M2MChip, destino: _Destino | None, descricao: str, usuario, agora) -> None:
@@ -435,11 +460,11 @@ def registrar_entrada(
 
 
 def vincular(chip: M2MChip, destino, usuario, motivo: str, *, observacoes: str = "") -> ResultadoMovimentacao:
-    """Vincula um chip DISPONÍVEL a um destino: um `FrotaVeiculo` OU um `Item` do estoque de TI
+    """Vincula um chip DISPONÍVEL (ou RESERVADO) a um destino: um `FrotaVeiculo` OU um `Item` do estoque de TI
     (tablet, celular). O destino pode ter vários chips.
 
     Recusa (`ValidationError`): sem `usuario` ou `motivo`; chip já vinculado (a mensagem diz a que
-    destino e desde quando), em manutenção ou inativo; veículo `desativado`; equipamento de TI de um
+    destino e desde quando), em manutenção, com defeito, pausado ou inativo; veículo `desativado`; equipamento de TI de um
     subtipo que não aceita chip, excluído, em descarte ou devolvido. Destino parado (veículo em
     manutenção/inativo; equipamento em manutenção/defeito/pausado) recebe o chip, com um texto em
     `avisos`. Se outra pessoa vincular o mesmo chip ao mesmo tempo, quem perde recebe "Este chip
@@ -475,7 +500,7 @@ def desvincular(
     vinculo_id_esperado, usuario, motivo: str, destino: str = "disponivel", *, observacoes: str = "",
 ) -> ResultadoMovimentacao:
     """Encerra o vínculo `vinculo_id_esperado`; o chip continua cadastrado e vai para
-    `destino` (`disponivel` ou `manutencao`).
+    `destino` (uma das `SITUACOES_LIVRES`: disponível, reservado, pausado, com defeito ou em manutenção).
 
     Se o vínculo JÁ foi encerrado (por outra pessoa, ou por transferência/substituição/
     inativação), recusa com "Este chip já foi desvinculado por fulano em 12/11 14:05…" —
@@ -485,7 +510,7 @@ def desvincular(
     _exigir_usuario(usuario)
     motivo = _motivo(motivo)
     if destino not in DESTINOS_DO_CHIP:
-        raise ValidationError({"destino": "O chip desvinculado fica disponível ou em manutenção."})
+        raise ValidationError({"destino": _MENSAGEM_DESTINO_DO_CHIP})
     agora = timezone.now()
     with transaction.atomic():
         vinculo = _vinculo_esperado(vinculo_id_esperado)
@@ -559,8 +584,8 @@ def substituir(
     *, observacoes: str = "",
 ) -> ResultadoMovimentacao:
     """Troca o chip do vínculo `vinculo_id_esperado` por `chip_novo` NO MESMO destino (veículo ou
-    equipamento de TI): o chip antigo sai (vai para `destino_antigo`: `disponivel` ou `manutencao`)
-    e o novo entra. Grava DUAS movimentações `substituicao` com o mesmo `operacao` (UUID) — uma por
+    equipamento de TI): o chip antigo sai (vai para `destino_antigo`, uma das `SITUACOES_LIVRES`: o caso comum da
+    troca é o chip que parou de funcionar, que sai `defeito`) e o novo entra. Grava DUAS movimentações `substituicao` com o mesmo `operacao` (UUID) — uma por
     chip, cada uma com o outro em `chip_relacionado`.
 
     Recusa: vínculo já encerrado; `chip_novo` igual ao atual, já vinculado, em manutenção ou
@@ -570,7 +595,7 @@ def substituir(
     _exigir_usuario(usuario)
     motivo = _motivo(motivo)
     if destino_antigo not in DESTINOS_DO_CHIP:
-        raise ValidationError({"destino_antigo": "O chip substituído fica disponível ou em manutenção."})
+        raise ValidationError({"destino_antigo": _MENSAGEM_DESTINO_DO_CHIP})
     agora = timezone.now()
     with transaction.atomic():
         antigo = _vinculo_esperado(vinculo_id_esperado)
@@ -613,19 +638,19 @@ def substituir(
 def retornar_disponibilidade(
     chip: M2MChip, usuario, motivo: str, retomar_monitoramento: bool = True, *, observacoes: str = "",
 ) -> ResultadoMovimentacao:
-    """Devolve à disponibilidade um chip em `manutencao` ou `inativo` (movimentação
-    `retorno`). Com `retomar_monitoramento=True` (padrão) e o monitoramento desligado
+    """Devolve à disponibilidade um chip em `manutencao`, `defeito`, `pausado`, `reservado` ou `inativo`
+    (movimentação `retorno`). Com `retomar_monitoramento=True` (padrão) e o monitoramento desligado
     (o que `inativar` faz), reativa-o (`m2m.reativar`: zera as falhas antigas e marca o
-    chip para a próxima rodada). Recusa chip que não está em manutenção nem inativo.
-    Devolve `ResultadoMovimentacao`."""
+    chip para a próxima rodada). Recusa chip que já está disponível ou que está vinculado (esse
+    sai pelo `desvincular`/`substituir`). Devolve `ResultadoMovimentacao`."""
     _exigir_usuario(usuario)
     motivo = _motivo(motivo)
     agora = timezone.now()
     with transaction.atomic():
         chip = _reler_chip(chip)
-        if chip.situacao_uso not in (Uso.MANUTENCAO, Uso.INATIVO):
+        if chip.situacao_uso in (Uso.DISPONIVEL, Uso.VINCULADO):
             raise ValidationError(
-                f"Só chip em manutenção ou inativo volta à disponibilidade (este está {chip.get_situacao_uso_display().lower()})."
+                f"Só chip parado, reservado ou inativo volta à disponibilidade (este está {chip.get_situacao_uso_display().lower()})."
             )
         operacao = uuid.uuid4()
         mov = _gravar_movimentacao(Tipo.RETORNO, chip, usuario, motivo, operacao=operacao, observacoes=observacoes, agora=agora)
@@ -671,6 +696,53 @@ def inativar(chip: M2MChip, usuario, motivo: str, *, observacoes: str = "") -> R
                 usuario, agora,
             )
     return ResultadoMovimentacao(operacao=operacao, movimentacoes=[mov], vinculo_encerrado=vinculo)
+
+
+def mudar_situacao(chip: M2MChip, nova: str, usuario, motivo: str, *, observacoes: str = "") -> ResultadoMovimentacao:
+    """A porta ÚNICA para mudar a situação de um chip que NÃO está vinculado — a que a tela chama.
+
+    Entre as `SITUACOES_LIVRES` (disponível, reservado, pausado, com defeito, em manutenção) grava a movimentação
+    `situacao` ("De X para Y"), o `M2MEvento` e `situacao_uso_em`. Os dois destinos que já tinham operação própria
+    ficam com ela, para a regra morar num lugar só: `disponivel` → `retornar_disponibilidade` (e retoma o
+    monitoramento, se estava desligado) e `inativo` → `inativar` (que também desliga o monitoramento e, se houver
+    vínculo, o encerra). Mudar entre as situações livres NÃO liga nem desliga o monitoramento: chip com defeito ou
+    pausado continua sendo consultado, porque o que a API diz dele é justamente o que ajuda a decidir.
+
+    Recusa: `vinculado` como destino (vincular pede veículo ou equipamento — `vincular`); chip vinculado (sai por
+    `desvincular` ou `substituir`, que já pedem a nova situação), chip inativo (volta antes à disponibilidade),
+    situação igual à atual e motivo vazio. Devolve `ResultadoMovimentacao`."""
+    nova = (nova or "").strip()
+    if nova not in {valor for valor, _ in Uso.choices}:
+        raise ValidationError({"situacao": "Escolha uma situação válida para o chip."})
+    if nova == Uso.VINCULADO:
+        raise ValidationError({"situacao": "Para vincular o chip, use Vincular: é preciso dizer a qual veículo ou equipamento."})
+    if nova == Uso.DISPONIVEL:
+        return retornar_disponibilidade(chip, usuario, motivo, observacoes=observacoes)
+    if nova == Uso.INATIVO:
+        return inativar(chip, usuario, motivo, observacoes=observacoes)
+    _exigir_usuario(usuario)
+    motivo = _motivo(motivo)
+    agora = timezone.now()
+    with transaction.atomic():
+        chip = _reler_chip(chip)
+        atual = chip.situacao_uso
+        if atual == nova:
+            raise ValidationError(f"Este chip já está {chip.get_situacao_uso_display().lower()}.")
+        if atual == Uso.VINCULADO or _vinculo_ativo_do_chip(chip) is not None:
+            raise ValidationError(
+                "Este chip está vinculado. Desvincule-o escolhendo a nova situação, ou substitua-o, antes de mudar a situação."
+            )
+        if atual not in SITUACOES_LIVRES:
+            raise ValidationError("Este chip está inativo. Devolva-o à disponibilidade antes de mudar a situação.")
+        operacao = uuid.uuid4()
+        texto = f"De {_rotulo_da_situacao(atual).lower()} para {_rotulo_da_situacao(nova).lower()}."
+        mov = _gravar_movimentacao(
+            Tipo.SITUACAO, chip, usuario, motivo, operacao=operacao,
+            observacoes=f"{texto} {observacoes}".strip(), agora=agora,
+        )
+        _gravar_situacao(chip, nova, usuario, agora)
+        _gravar_evento(mov, chip, usuario)
+    return ResultadoMovimentacao(operacao=operacao, movimentacoes=[mov])
 
 
 # ═════════════════════════════════════════════════════════════

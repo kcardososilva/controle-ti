@@ -1,5 +1,5 @@
 /* =============================================================
-   equipamentos-list.css — Lista de equipamentos — hero 3D, KPIs, filtros, tabela e galeria
+   equipamentos-list.css — Lista de equipamentos — topo, faixa de números, filtros, tabela e galeria
 
    Extraido do <style> de equipamentos_list.html. Nenhuma regra alterada.
    Escopo preservado: as regras continuam presas ao prefixo da
@@ -116,72 +116,52 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     border: 1px solid var(--eq-border-2);
     border-radius: var(--eq-radius-md);
     background: var(--eq-bg);
-    /* Elevação em repouso: as superfícies "flutuam" sobre o canvas (--bg-page),
-       eliminando o efeito chapado / estouro de branco de tela cheia. */
-    box-shadow: var(--eq-shadow-sm);
+    /* Plana de propósito (pedido de 15/11/2026: tela minimalista): borda fina,
+       sem sombra em repouso e sem sombra que cresce no hover. */
     overflow: hidden;
-    transition: border-color var(--eq-transition), box-shadow var(--eq-transition);
 }
 
 .eq-table-card {
     position: relative;
 }
 
-.eq-panel:hover,
-.eq-table-card:hover {
-    box-shadow: var(--eq-shadow-md);
+/* ── Topo: título e ações na mesma linha ────────────────────────────
+   O `.page-header` é o componente do sistema (base.css, coluna); aqui vira
+   LINHA para a ação principal ficar à direita do título. Sem selo e com uma
+   linha só de descrição (pedido de 15/11/2026: tela mais limpa). */
+.equipment-page .eq-topo {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    margin-bottom: 0;
 }
 
-/* ── Toolbar (ações + exibição) — substitui o hero interno ──────── */
-.eq-toolbar {
+.eq-acoes {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-2);
     flex-wrap: wrap;
 }
 
-.eq-toolbar-lead {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-}
-
 .eq-result-count {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
     color: var(--eq-muted);
     font-size: var(--text-sm);
     font-weight: 500;
 }
-.eq-result-count::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: var(--radius-pill);
-    background: var(--eq-soft);
-}
 
-.eq-toolbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-/* Separador sutil entre grupos de ação (utilitários · exportação · ação primária) */
-.eq-toolbar-divider {
+/* Só para leitor de tela: os rótulos da barra de filtros e a legenda da área. */
+.equipment-page .eq-sr-only {
+    position: absolute;
     width: 1px;
-    align-self: stretch;
-    min-height: 22px;
-    background: var(--eq-border-2);
-    margin: 0 2px;
-}
-@media (max-width: 720px) {
-    .eq-toolbar-divider { display: none; }
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .eq-chip,
@@ -217,6 +197,15 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
 .eq-size-form select {
     min-width: 128px;
     cursor: pointer;
+}
+
+/* Na barra da tabela o seletor é um detalhe, não um campo de formulário. */
+.eq-view-toolbar .eq-size-form select {
+    min-width: 0;
+    min-height: 30px;
+    padding: 2px 10px;
+    border-radius: var(--eq-radius-sm);
+    font-size: var(--text-xs);
 }
 
 .eq-form-control:hover,
@@ -283,6 +272,18 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     color: var(--eq-text);
 }
 
+/* Ação secundária: sem moldura até o hover. Só o primário ("Novo ativo") tem cor. */
+.eq-btn-quiet {
+    background: transparent;
+    border-color: transparent;
+    color: var(--eq-muted);
+}
+
+.eq-btn-quiet:hover {
+    background: var(--eq-hover);
+    color: var(--eq-text);
+}
+
 .eq-btn-danger {
     background: var(--eq-danger);
     border-color: var(--eq-danger);
@@ -302,213 +303,313 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     pointer-events: none;
 }
 
-/* ── Faixa de métricas (padrão profissional — sem cards 3D/tilt/gradiente) ──
-   6 células divididas por hairlines (gap:1px sobre a cor de borda), num único
-   bloco que flutua sobre o canvas. Informação-primeiro, sem decoração. */
-.eq-kpi-grid {
+/* ── Faixa de números ────────────────────────────────────────────────
+   Quatro números numa FAIXA só, sem cartão (pedido de 15/11/2026). Substituiu
+   os seis cartões de KPI. O número vem antes do rótulo na tela (`order: -1`)
+   e depois dele na marcação, que é a ordem em que o leitor de tela lê "Total,
+   12". Cor só onde há o que dizer: o zero fica apagado. A quarta célula
+   ("Valor em estoque") só existe quando há valor, então as colunas se ajustam
+   ao que veio (`grid-auto-flow: column`). */
+.eq-numeros-wrap {
+    min-width: 0;
+}
+
+.eq-numeros {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 1px;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    margin: 0;
+    border-block: 1px solid var(--eq-border);
+}
+
+.eq-numeros-item {
+    display: grid;
+    gap: var(--space-1);
+    align-content: start;
+    padding: var(--space-3) var(--space-5);
+    border-left: 1px solid var(--eq-border);
+}
+
+.eq-numeros-item:first-child {
+    border-left: 0;
+    padding-left: 0;
+}
+
+.eq-numeros-item dt {
+    margin: 0;
+    color: var(--eq-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.eq-numeros-item dd {
+    order: -1;
+    margin: 0;
+    white-space: nowrap;
+    color: var(--eq-text);
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: var(--leading-tight);
+}
+
+.eq-numeros-item.is-zero dd {
+    color: var(--eq-soft);
+}
+
+.eq-numeros-item.is-alerta dd {
+    color: var(--eq-warning);
+}
+
+@media (max-width: 40rem) {
+    .eq-numeros {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .eq-numeros-item {
+        padding-inline: var(--space-3);
+    }
+
+    .eq-numeros-item dd {
+        font-size: var(--text-lg);
+    }
+
+    .eq-numeros-item:nth-child(odd) {
+        border-left: 0;
+        padding-left: 0;
+    }
+
+    .eq-numeros-item:nth-child(n + 3) {
+        border-top: 1px solid var(--eq-border);
+    }
+}
+
+/* ── Barra de filtros ────────────────────────────────────────────────
+   Sempre à vista: busca, área e atalhos de status. O resto dos campos mora em
+   "Mais filtros" (`.eq-avancados`), recolhido. Sem cartão em volta. */
+.eq-barra {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.eq-barra-linha {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.eq-barra-linha--status {
+    justify-content: space-between;
+}
+
+.eq-busca {
+    flex: 1 1 16rem;
+    max-width: 28rem;
+    display: flex;
+    align-items: center;
+    height: var(--eq-control-h);
+    border: 1px solid var(--eq-border-2);
+    border-radius: var(--eq-radius-sm);
+    background: var(--eq-bg);
+    transition: border-color var(--eq-transition), box-shadow var(--eq-transition);
+}
+
+/* Busca por nº de série: ao lado da busca por nome, mais estreita (o código é curto). */
+.eq-busca--serie {
+    flex-basis: 11rem;
+    max-width: 16rem;
+}
+
+.eq-busca:hover {
+    border-color: var(--eq-border-strong);
+}
+
+.eq-busca:focus-within {
+    border-color: var(--eq-brand);
+    box-shadow: 0 0 0 3px var(--eq-ring);
+}
+
+.eq-busca i {
+    flex: 0 0 auto;
+    width: 36px;
+    color: var(--eq-soft);
+    font-size: var(--text-sm);
+    text-align: center;
+}
+
+.eq-busca:focus-within i {
+    color: var(--eq-brand);
+}
+
+.eq-busca input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 12px 0 0;
+    border: none;
+    background: transparent;
+    color: var(--eq-text);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    outline: none;
+}
+
+.eq-busca input::placeholder {
+    color: var(--eq-soft);
+}
+
+/* Área de operação: controle segmentado (Todas · Produtiva · Não produtiva ·
+   Sem área). Rádios de verdade — teclado e leitor de tela funcionam sem JS —,
+   com o input invisível por cima do rótulo. A cor da área (a mesma `--chart-1`
+   / `--chart-2` do painel de metas e do Plano de Agendamento) é só um ponto: o
+   TEXTO é quem diz qual área é. */
+.eq-segmento {
+    display: inline-flex;
+    max-width: 100%;
+    margin: 0;
+    padding: 2px;
     border: 1px solid var(--eq-border-2);
     border-radius: var(--eq-radius-md);
-    background: var(--eq-border);
-    box-shadow: var(--eq-shadow-sm);
-    overflow: hidden;
-}
-@media (max-width: 1100px) {
-    .eq-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (max-width: 620px) {
-    .eq-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 380px) {
-    .eq-kpi-grid { grid-template-columns: minmax(0, 1fr); }
+    background: var(--eq-bg-soft);
+    overflow-x: auto;
 }
 
-.eq-kpi-card {
+.eq-segmento-opcao {
     position: relative;
-    display: flex;
+    display: inline-flex;
+}
+
+.eq-segmento-opcao input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.eq-segmento-opcao span {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    min-height: 64px;
-    padding: 12px 14px 11px;
-    background: var(--eq-bg);
-    border-top: 3px solid color-mix(in srgb, var(--eq-kpi-color) 65%, transparent);
-    transition: background var(--eq-transition), border-color var(--eq-transition);
-}
-
-.eq-kpi-card:hover {
-    background: var(--eq-bg-soft);
-}
-
-.eq-kpi-icon {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 7px;
-    /* --eq-kpi-color é setado inline por card em _kpis.html (60-30-10: saúde
-       colorida, inventário/financeiro neutro) — o ícone e a barra de topo são
-       os únicos pontos que carregam esse sinal, o resto da célula é neutro. */
-    background: color-mix(in srgb, var(--eq-kpi-color) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--eq-kpi-color) 26%, transparent);
-    color: var(--eq-kpi-color);
-    font-size: var(--text-xs);
-}
-
-.eq-kpi-body {
-    min-width: 0;
-    flex: 1;
-}
-
-.eq-kpi-value {
-    display: block;
-    color: var(--eq-text);
-    font-family: var(--eq-font);
-    font-size: 20px;
-    font-weight: 700;
-    line-height: 1.1;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-}
-
-.eq-kpi-label {
-    margin-top: 3px;
+    gap: 6px;
+    min-height: calc(var(--eq-control-h) - 8px);
+    padding: 0 var(--space-3);
+    border-radius: var(--eq-radius-sm);
     color: var(--eq-muted);
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    letter-spacing: .03em;
-    text-transform: uppercase;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Faixa de destaque no topo do painel — mesma linguagem dos cards de KPI
-   acima (borda colorida de 3px), só que aqui fixa na cor da marca: dá ao
-   painel de filtros uma "assinatura" visual, como a barra de acento de uma
-   guia ativa no Office (Excel/Outlook). Painel 100% chapado — sem sombra,
-   sem gradiente, cantos quase retos: estilo planilha corporativa. */
-.eq-filters,
-.eq-filters:hover,
-.eq-filters[open] {
-    border-top: 3px solid var(--eq-brand);
-    border-radius: 3px;
-    box-shadow: none;
-}
-
-.eq-filters-summary {
-    min-height: 46px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 20px;
-    background: var(--eq-bg-soft);
-    color: var(--eq-text);
     font-size: var(--text-sm);
     font-weight: 600;
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
+    white-space: nowrap;
+    transition: background var(--eq-transition), color var(--eq-transition);
 }
 
-.eq-filters-summary::-webkit-details-marker {
+.eq-segmento-opcao input:hover + span {
+    color: var(--eq-text);
+}
+
+.eq-segmento-opcao input:checked + span {
+    background: var(--eq-bg);
+    color: var(--eq-text);
+    box-shadow: var(--eq-shadow-sm);
+}
+
+.eq-segmento-opcao input:focus-visible + span {
+    outline: 2px solid var(--eq-brand);
+    outline-offset: 1px;
+}
+
+.eq-segmento-opcao.is-produtiva span::before,
+.eq-segmento-opcao.is-nao_produtiva span::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-pill);
+}
+
+.eq-segmento-opcao.is-produtiva span::before {
+    background: var(--chart-1);
+}
+
+.eq-segmento-opcao.is-nao_produtiva span::before {
+    background: var(--chart-2);
+}
+
+/* Botão de texto: "Limpar" e "Mais filtros". */
+.eq-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--eq-radius-sm);
+    background: transparent;
+    color: var(--eq-muted);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--eq-transition), background var(--eq-transition);
+}
+
+.eq-link:hover {
+    background: var(--eq-hover);
+    color: var(--eq-text);
+}
+
+.eq-link:focus-visible {
+    outline: 2px solid var(--eq-brand);
+    outline-offset: 1px;
+}
+
+/* `display: inline-flex` empata em especificidade com o `[hidden]` do
+   navegador e vem depois: sem isto "Limpar" nunca some de verdade. */
+.eq-link[hidden],
+.eq-filters-badge[hidden],
+.eq-avancados[hidden] {
     display: none;
 }
 
-.eq-filters-summary-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 3px;
-    background: var(--eq-brand-soft);
-    color: var(--eq-brand);
-    font-size: var(--text-xs);
-}
-
-.eq-filters-summary .fa-chevron-down {
+.eq-mais-btn {
     margin-left: auto;
-    color: var(--eq-muted);
-    font-size: var(--text-xs);
-    transition: transform var(--eq-transition), color var(--eq-transition);
 }
 
-.eq-filters[open] .eq-filters-summary .fa-chevron-down {
+.eq-mais-seta {
+    color: var(--eq-soft);
+    font-size: var(--text-2xs);
+    transition: transform var(--eq-transition);
+}
+
+.eq-mais-btn[aria-expanded="true"] .eq-mais-seta {
     transform: rotate(180deg);
-    color: var(--eq-brand);
 }
 
+/* Quantos filtros estão aplicados DENTRO de "Mais filtros". */
 .eq-filters-badge {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 9px;
+    justify-content: center;
+    min-width: 20px;
+    padding: 1px 6px;
     border-radius: var(--eq-radius-pill);
     background: var(--eq-brand-soft);
     color: var(--eq-brand);
     font-size: var(--text-2xs);
     font-weight: 700;
-    white-space: nowrap;
-}
-/* `display: inline-flex` acima tem a mesma especificidade do `[hidden]` do
-   navegador e vem depois na cascata, então vence — sem isto o badge "0
-   filtros ativos" nunca fica realmente escondido. */
-.eq-filters-badge[hidden] {
-    display: none;
 }
 
-.eq-filters-body {
-    padding: 16px 20px 18px;
-    border-top: 1px solid var(--eq-border);
+.eq-avancados {
+    padding: var(--space-4);
+    border: 1px solid var(--eq-border);
+    border-radius: var(--eq-radius-md);
     background: var(--eq-bg);
 }
 
-/* ── Filtros v2 — agrupados por finalidade em vez de uma única linha densa
-   de pills. Rótulo ACIMA do controle (em vez do tag lateral antigo) e grade
-   responsiva. Só 2 clusters com cabeçalho sutil ("Classificação" — que
-   também abre com a busca por nome — e "Identificação, local & custo"),
-   compactos de propósito: menos altura total que 3 grupos separados. O
-   "Limpar filtros" mora no cabeçalho do 1º cluster (não numa linha própria)
-   pelo mesmo motivo. O par select2/toggle "Exceto" preserva a mesma altura
-   entre campos com e sem exceção: o toggle fica lado a lado do controle,
-   nunca empilhado. ── */
-.eq-filter-groups {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.eq-filter-group-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 9px;
-}
-
-.eq-filter-group-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--eq-soft);
-    font-size: var(--text-2xs);
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-.eq-filter-group-title::after {
-    content: "";
-    flex: 1 1 auto;
-    height: 1px;
-    background: var(--eq-border);
-}
-
+/* ── Campos de "Mais filtros" — rótulo ACIMA do controle e grade responsiva.
+   O par select2/toggle "Exceto" preserva a mesma altura entre campos com e sem
+   exceção: o toggle fica lado a lado do controle, nunca empilhado. ── */
 .eq-filter-group-fields {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -568,24 +669,6 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
 .eq-filter-field.is-exceto .eq-filter-control-row {
     border-color: var(--eq-danger);
     background: var(--eq-danger-bg);
-}
-
-/* Busca por nome: mesma "control-row" e altura de todo mundo agora (campo
-   comum dentro de "Classificação"), só com o ícone de lupa embutido para
-   continuar reconhecível como busca. */
-.eq-filter-search-icon {
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    width: 36px;
-    color: var(--eq-soft);
-    font-size: var(--text-sm);
-}
-.eq-filter-field--search .eq-filter-control-row:focus-within .eq-filter-search-icon {
-    color: var(--eq-brand);
-}
-.eq-filter-field--search .eq-filter-control input[type="text"] {
-    padding-left: 2px;
 }
 
 .eq-filter-control {
@@ -663,30 +746,6 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
 .eq-filter-field.is-exceto .eq-exc-toggle {
     background: var(--eq-danger);
     color: #fff;
-}
-
-.eq-filter-clear {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 24px;
-    padding: 0 10px;
-    border: 1px solid var(--eq-border-2);
-    border-radius: var(--eq-radius-sm);
-    background: var(--eq-bg);
-    color: var(--eq-muted);
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    font-family: inherit;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: color var(--eq-transition), border-color var(--eq-transition), background var(--eq-transition);
-}
-.eq-filter-clear:hover {
-    color: var(--eq-danger);
-    border-color: var(--eq-danger);
-    background: var(--eq-danger-bg);
 }
 
 /* Select2 "embutido" na control-row: sem borda/fundo/raio próprios — herda
@@ -816,20 +875,7 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 18px;
-    padding-top: 16px;
-    border-top: 1px solid var(--eq-border);
-}
-
-.eq-chip-row-label {
-    flex: 0 0 auto;
-    margin-right: 2px;
-    color: var(--eq-soft);
-    font-size: var(--text-2xs);
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
+    gap: var(--space-2);
 }
 
 .eq-chip {
@@ -898,9 +944,8 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     top: 0;
     z-index: 2;
     padding: 11px 16px;
-    border-bottom: 2px solid var(--eq-border-strong);
-    border-right: 1px solid var(--eq-border);
-    background: var(--eq-bg-soft);
+    border-bottom: 1px solid var(--eq-border-2);
+    background: var(--eq-bg);
     color: var(--eq-muted);
     font-size: var(--text-2xs);
     font-weight: 600;
@@ -908,10 +953,6 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
     text-transform: uppercase;
     white-space: nowrap;
     transition: color var(--eq-transition), background var(--eq-transition);
-}
-
-.eq-table thead th:last-child {
-    border-right: none;
 }
 
 /* Somente colunas ordenáveis são clicáveis e mostram a afordância de ordenação. */
@@ -954,26 +995,17 @@ body.theme-dark :where(.equipment-page, #deleteModal, #importResultModal, .selec
 .eq-table tbody td {
     padding: 13px 16px;
     border-bottom: 1px solid var(--eq-border);
-    border-right: 1px solid var(--eq-border);
     color: var(--eq-text);
     font-size: var(--text-sm);
     vertical-align: middle;
-}
-
-.eq-table tbody td:last-child {
-    border-right: none;
 }
 
 .eq-table tbody tr {
     transition: background var(--eq-transition);
 }
 
-/* Zebra striping (estilo planilha) — resolvido por linha ímpar/par; o hover
-   abaixo tem a mesma especificidade (0,2,3) e vence por ordem de declaração. */
-.eq-table tbody tr:nth-child(even) td {
-    background: var(--eq-bg-2);
-}
-
+/* Sem zebra e sem grade vertical (pedido de 15/11/2026): só a linha fina entre
+   registros e o hover. */
 .eq-table tbody tr:hover td {
     background: var(--eq-hover);
 }
@@ -1178,23 +1210,67 @@ body.theme-dark .tp-locado {
     color: var(--eq-muted);
 }
 
-.eq-lote-stack {
-    min-width: 180px;
-    display: grid;
-    gap: 7px;
-}
-
-.eq-lote-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
+/* Saldo de lote na tabela: UMA linha sob o nome do ativo, só para quem tem lote.
+   A barra (`.eq-lote-progress` / `.eq-lote-fill`, abaixo) continua existindo
+   para a galeria. A faixa (ok / atenção / crítico / zerado) vem da mesma
+   `lote_status` e pinta só o número. */
+.eq-asset-lote {
+    margin-top: 3px;
     color: var(--eq-muted);
     font-size: var(--text-xs);
+    line-height: 1.35;
 }
 
-.eq-lote-line strong {
+.eq-asset-lote strong {
     color: var(--eq-text);
     font-weight: 600;
+}
+
+.eq-asset-lote.eq-lote-atencao strong {
+    color: var(--eq-warning);
+}
+
+.eq-asset-lote.eq-lote-critico strong,
+.eq-asset-lote.eq-lote-zerado strong {
+    color: var(--eq-danger);
+}
+
+/* Coluna "Tipo": subtipo e, quando existe, a área de operação. */
+.eq-tipo-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: 0;
+}
+
+.eq-type-badge + .eq-tipo-sub {
+    margin-top: 6px;
+}
+
+/* Etiqueta da área de operação — as cores `--chart-1` / `--chart-2` são as
+   MESMAS do painel de metas, do Plano de Agendamento e da ficha. */
+.eq-area {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border: 1px solid transparent;
+    border-radius: var(--eq-radius-pill);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.eq-area.is-produtiva {
+    color: var(--chart-1);
+    background: color-mix(in srgb, var(--chart-1) 12%, transparent);
+    border-color: color-mix(in srgb, var(--chart-1) 26%, transparent);
+}
+
+.eq-area.is-nao_produtiva {
+    color: var(--chart-2);
+    background: color-mix(in srgb, var(--chart-2) 14%, transparent);
+    border-color: color-mix(in srgb, var(--chart-2) 30%, transparent);
 }
 
 .eq-lote-progress {
@@ -1452,14 +1528,6 @@ body.theme-dark .eq-modal-icon.eq-info {
 }
 
 @media (max-width: 860px) {
-    .eq-filters-summary {
-        padding: 15px 16px;
-    }
-
-    .eq-filters-body {
-        padding: 16px;
-    }
-
     .eq-table,
     .eq-table thead,
     .eq-table tbody,
@@ -1529,8 +1597,37 @@ body.theme-dark .eq-modal-icon.eq-info {
         display: none;
     }
 
+    /* CAUSA do S/N cortado na borda do cartão (print do usuário, 15/11/2026):
+       o `base.css` global tem `th, td { white-space: nowrap }`, e `white-space`
+       é HERDADO — o texto dentro da célula nunca quebrava, por mais que
+       `.eq-asset-name`/`.eq-asset-sub` declarem `overflow-wrap`. No cartão do
+       mobile a célula tem de quebrar. */
+    .eq-table tbody td {
+        white-space: normal;
+    }
+
+    /* O bloco do ativo (nome + S/N · marca / modelo + saldo) também não se mede
+       pelo próprio texto: base zero + `flex-grow` = ocupa só o que sobra ao lado
+       do avatar, e o texto quebra aí dentro. */
     .eq-asset-cell {
         min-width: 0;
+        align-items: flex-start;
+    }
+
+    .eq-asset-main {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .eq-table tbody tr,
+    .eq-table tbody td {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* Ações: três botões com ícone e `title`; o rótulo "Ações" só gastaria uma linha do cartão. */
+    .eq-table tbody td[data-label="Ações"]::before {
+        display: none;
     }
 
     .eq-actions-cell {
@@ -1567,13 +1664,54 @@ body.theme-dark .eq-modal-icon.eq-info {
         gap: 14px;
     }
 
-    .eq-chip {
-        width: 100%;
+    /* Busca por nome e por nº de série lado a lado (cada uma com pelo menos 9rem);
+       só empilham quando a tela não comporta as duas. */
+    .eq-busca,
+    .eq-busca--serie {
+        flex: 1 1 9rem;
+        max-width: none;
     }
 
+    .eq-mais-btn {
+        margin-left: 0;
+    }
+
+    /* A ação principal vem PRIMEIRO e ocupa a largura toda; Importar, Modelo e
+       Exportar ficam numa linha abaixo. */
+    .eq-acoes #btnNovoAtivo {
+        order: -1;
+        flex: 1 1 100%;
+    }
+
+    .eq-acoes {
+        gap: var(--space-1);
+    }
+
+    /* Mais justo, para Importar, Modelo e Exportar caberem na MESMA linha em 360px. */
+    .eq-acoes .eq-btn-quiet {
+        padding-inline: 10px;
+    }
+
+    /* Cartão da linha enxuto: rótulo (estreito) ao lado do valor, em vez de um
+       empilhado por campo — o cartão de cada ativo ficava com mais de 300px. */
     .eq-table tbody td {
-        grid-template-columns: 1fr;
-        gap: 5px;
+        grid-template-columns: 7rem minmax(0, 1fr);
+        gap: 8px;
+        align-items: center;
+    }
+
+    .eq-table tbody td.eq-td-main {
+        padding-top: 0;
+    }
+
+    .eq-table tbody td[data-label="Ações"] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .eq-view-toolbar {
+        flex-wrap: wrap;
+        padding: 8px 10px;
+        gap: var(--space-2);
     }
 
     .eq-pagination-actions {
@@ -1599,9 +1737,13 @@ body.theme-dark .eq-modal-icon.eq-info {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--space-3);
     padding: 8px 14px;
     border-bottom: 1px solid var(--eq-border);
+}
+
+.eq-view-toolbar .eq-result-count {
+    margin-right: auto;
 }
 
 .eq-view-toggle {

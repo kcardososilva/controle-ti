@@ -207,6 +207,7 @@ def contexto_base(request, aba: str, *, faixa: bool = True, **extra) -> dict:
             "testar": reverse("m2m_config_testar") if contexto["pode_configurar"] else "",
             "simular": reverse("m2m_config_frequencia") if contexto["pode_configurar"] else "",
             "sincronizacao": reverse("m2m_sincronizacao") if (contexto["pode_ver_chips"] and api) else "",
+            "atualizar_todos": reverse("m2m_atualizar_todos") if (contexto["pode_atualizar"] and api) else "",
         },
     }
     contexto.update(extra)

@@ -687,7 +687,7 @@ class SubstituirRetornarInativarTests(FrotaBase):
         self.assertEqual((r.movimentacao.tipo, r.movimentacao.motivo), ("retorno", "Voltou da revisão"))
         with self.assertRaises(ValidationError) as cm:
             vinculos.retornar_disponibilidade(chip, self.usuario, "x")                          # já disponível
-        self.assertIn("manutenção ou inativo", cm.exception.messages[0])
+        self.assertIn("volta à disponibilidade (este está disponível)", cm.exception.messages[0])
         vinculos.inativar(chip, self.usuario, "descartado")
         chip.refresh_from_db()
         self.assertFalse(chip.monitorado)

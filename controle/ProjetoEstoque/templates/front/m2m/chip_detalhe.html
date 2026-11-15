@@ -30,11 +30,11 @@
           <button type="button" class="m2m-btn m2m-btn--primario" data-m2m-atualizar data-url="{% url 'm2m_chip_atualizar' chip.pk %}" data-tipos="sessao,consumo" data-contexto="detalhe"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>Atualizar tudo</button>
         {% endif %}
         {% if pode_importar %}<a class="m2m-btn" href="{% url 'm2m_chip_editar' chip.pk %}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</a>{% endif %}
-        {% if pode_transferir or pode_vincular and chip.situacao_uso == "disponivel" %}
+        {% if pode_transferir or pode_vincular and chip_aceita_vinculo %}
         <details class="m2m-menu" data-m2m-menu>
           <summary class="m2m-btn">Movimentar<i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
           <div class="m2m-menu-lista">
-            {% if chip.situacao_uso == "disponivel" and pode_vincular %}
+            {% if chip_aceita_vinculo and pode_vincular %}
               <button type="button" data-frota-abrir="vincular_veiculo" data-url="{% url 'frota_vincular' %}" data-campo-chip="{{ chip.pk }}" data-alvo="Chip {{ chip.nome }}">Vincular a um veículo</button>
             {% endif %}
             {% if pode_transferir %}
@@ -43,7 +43,10 @@
                 <button type="button" data-frota-abrir="substituir" data-url="{% url 'frota_substituir' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · {{ destino_atual }}">Substituir por outro chip</button>
                 <button type="button" data-frota-abrir="desvincular" data-url="{% url 'frota_desvincular' vinculo_atual_id %}" data-alvo="Chip {{ chip.nome }} · {{ destino_atual }}">Desvincular</button>
               {% endif %}
-              {% if chip.situacao_uso == "manutencao" or chip.situacao_uso == "inativo" %}
+              {% if chip_situacao_livre %}
+                <button type="button" data-frota-abrir="situacao" data-url="{% url 'frota_situacao' chip.pk %}" data-alvo="Chip {{ chip.nome }} · hoje: {{ chip.get_situacao_uso_display }}">Mudar situação</button>
+              {% endif %}
+              {% if chip_pode_devolver %}
                 <button type="button" data-frota-abrir="retornar" data-url="{% url 'frota_retornar' chip.pk %}" data-alvo="Chip {{ chip.nome }} · hoje: {{ chip.get_situacao_uso_display }}">Devolver à disponibilidade</button>
               {% endif %}
               {% if chip.situacao_uso != "inativo" %}
@@ -257,6 +260,55 @@
     {% comment %}Histórico: consultas, eventos e ocorrências{% endcomment %}
     {% comment %}O patrimônio do chip no estoque de TI (valor, NF, termo): lido do item, ligado pelo ICCID (regra 66).{% endcomment %}
     {% include 'front/m2m/_chip_estoque_ti.html' %}
+
+    {% comment %}Situação e acompanhamento: em que situação o chip está e desde quando, o que o sistema SUGERE conferir (nunca aplica sozinho: cada botão abre o diálogo de sempre, com motivo) e por onde ele passou. A trilha completa continua no Histórico.{% endcomment %}
+    <section class="m2m-painel" id="m2m-d-situacao" data-secao="Situação" aria-labelledby="m2m-d-situacao-t">
+      <header class="m2m-painel-cab">
+        <h3 class="m2m-painel-t" id="m2m-d-situacao-t">Situação e acompanhamento</h3>
+        {% if pode_transferir and chip_situacao_livre %}<div class="m2m-botoes"><button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="situacao" data-url="{% url 'frota_situacao' chip.pk %}" data-alvo="Chip {{ chip.nome }} · hoje: {{ chip.get_situacao_uso_display }}">Mudar situação</button></div>{% endif %}
+      </header>
+      <div class="m2m-painel-corpo">
+        <p class="m2m-nota">
+          {% frota_status chip.situacao_uso %}
+          {% if dias_na_situacao is not None %}
+            desde <b class="m2m-num">{{ chip.situacao_uso_em|date:"d/m/Y" }}</b> ·
+            {% if dias_na_situacao == 0 %}hoje{% else %}há {{ dias_na_situacao }} dia{{ dias_na_situacao|pluralize }}{% endif %}
+          {% else %}
+            <span class="m2m-sub">desde quando: não registrado (chip anterior ao acompanhamento de situação)</span>
+          {% endif %}
+        </p>
+
+        {% if sugestoes_situacao %}
+        <h4 class="m2m-sub-t">O que vale conferir</h4>
+        {% for s in sugestoes_situacao %}
+        <div class="m2m-aviso" data-tom="{% if s.tom == 'info' %}neutro{% else %}atencao{% endif %}" data-sugestao="{{ s.codigo }}">
+          <b>{{ s.titulo }}.</b> {{ s.detalhe }}
+          {% if s.acao and pode_transferir %}
+            {% if s.acao == "mudar" %}
+              <button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="situacao" data-url="{% url 'frota_situacao' chip.pk %}" data-campo-situacao="{{ s.situacao }}" data-alvo="Chip {{ chip.nome }} · hoje: {{ chip.get_situacao_uso_display }}">{{ s.rotulo_da_acao }}</button>
+            {% elif vinculo_atual_id %}
+              <button type="button" class="m2m-btn m2m-btn--sm" data-frota-abrir="desvincular" data-url="{% url 'frota_desvincular' vinculo_atual_id %}" data-campo-destino="{{ s.situacao }}" data-alvo="Chip {{ chip.nome }} · {{ destino_atual }}">{{ s.rotulo_da_acao }}</button>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endfor %}
+        <p class="m2m-nota">São sugestões: o sistema não muda a situação do chip sozinho.</p>
+        {% endif %}
+
+        {% if mudancas_de_situacao %}
+        <h4 class="m2m-sub-t">Por onde o chip passou</h4>
+        <ol class="m2m-tempo">
+          {% for m in mudancas_de_situacao %}
+          <li data-nivel="info">
+            <span class="m2m-num m2m-tempo-quando">{{ m.quando|date:"d/m/Y H:i" }}</span>
+            <span class="m2m-tempo-marca" aria-hidden="true"></span>
+            <span class="m2m-tempo-texto"><b>{{ m.titulo }}</b>{% if m.detalhe %}<span class="m2m-sub">{{ m.detalhe }}</span>{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+      </div>
+    </section>
 
     {% if localizacao_chip %}
     {% comment %}Onde está o chip: é a localização do veículo em que ele está instalado agora (o vínculo ativo). A TIM não informa posição.{% endcomment %}

@@ -26,22 +26,21 @@
 <div class="pvc-page">
 
   {% comment %}Como as três peças se encaixam. Sem isto, "área" no cadastro do
-     equipamento e "responsável" aqui parecem controles soltos.{% endcomment %}
-  <div class="pvm-aviso is-info">
-    <i class="fa fa-circle-info" aria-hidden="true"></i>
-    <div class="pvm-aviso-corpo">
-      <span class="pvm-aviso-titulo">Como a meta é montada</span>
-      <span class="pvm-aviso-texto">
-        <strong>1.</strong> O equipamento recebe a <strong>área de operação</strong> no próprio cadastro
-        (campo “Área de operação”, em Controle Operacional). ·
-        <strong>2.</strong> Aqui você diz <strong>quem responde</strong> por cada área. ·
-        <strong>3.</strong> O <strong>ciclo</strong> é a janela em que todo equipamento elegível
-        precisa receber uma preventiva — 90 dias para switches.
-        A execução continua sendo registrada normalmente nas telas de preventiva;
-        a meta apenas lê esses registros.
-      </span>
-    </div>
-  </div>
+     equipamento e "responsável" aqui parecem controles soltos. Recolhido por pedido do
+     usuário (15/11/2026: tela mais limpa): quem já sabe não precisa ler de novo, e quem
+     não sabe abre.{% endcomment %}
+  <details class="pvc-ajuda">
+    <summary><i class="fa fa-circle-info" aria-hidden="true"></i> Como a meta é montada</summary>
+    <p>
+      <strong>1.</strong> O equipamento recebe a <strong>área de operação</strong> no próprio cadastro
+      (campo “Área de operação”, em Controle Operacional). ·
+      <strong>2.</strong> Aqui você diz <strong>quem responde</strong> por cada área. ·
+      <strong>3.</strong> O <strong>ciclo</strong> é a janela em que todo equipamento elegível
+      precisa receber uma preventiva — 90 dias para switches.
+      A execução continua sendo registrada normalmente nas telas de preventiva;
+      a meta apenas lê esses registros.
+    </p>
+  </details>
 
   {# ── Pendência de classificação: pré-requisito que trava o denominador ── #}
   {% if pendencias %}
@@ -65,106 +64,146 @@
     </div>
   {% endif %}
 
-  <div class="pvc-colunas {% if editando_ciclo %}is-editando{% endif %}">
+  {% comment %}Classificado e SEM dono: entra na meta de ninguém. É a lacuna do mapa de
+     responsabilidades — antes só o painel de metas a mostrava, como "área vaga".{% endcomment %}
+  {% if parque.sem_responsavel %}
+    <div class="pvm-aviso">
+      <i class="fa fa-user-slash" aria-hidden="true"></i>
+      <div class="pvm-aviso-corpo">
+        <span class="pvm-aviso-titulo">
+          {{ parque.sem_responsavel_total }} equipamento{{ parque.sem_responsavel_total|pluralize }}
+          sem técnico responsável
+        </span>
+        <span class="pvm-aviso-texto">
+          Já têm área, mas nenhuma responsabilidade cobre a combinação abaixo. Defina em “Gerenciar responsáveis”.
+        </span>
+        <div class="pvm-aviso-chips">
+          {% for v in parque.sem_responsavel %}
+            <span class="pvm-aviso-chip">{{ v.area_label }} · {{ v.subtipo }}: {{ v.total }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
+  <div class="pvc-colunas {% if editando_ciclo %}is-editando{% endif %}">
     {# ══════════════ RESPONSÁVEIS POR ÁREA ══════════════ #}
-    <section class="pv-card">
+    <section class="pv-card pvc-parque">
       <div class="pv-card-head">
         <h2 class="pv-card-title"><i class="fa fa-user-gear" aria-hidden="true"></i> Técnicos responsáveis</h2>
       </div>
+
+      {% comment %}Pedido de 15/11/2026: mostrar a cada técnico a lista de equipamentos que ele
+         responde. É só leitura — a apuração é a do painel de metas (`apurar_ciclo`) e a regra de
+         "de quem é este ativo" é a de `responsaveis_map`. Quem está logado vem primeiro e já aberto.{% endcomment %}
       <div class="pv-card-body">
-        <form method="post" class="pvc-form">
-          {% csrf_token %}
-          <input type="hidden" name="acao" value="salvar_responsavel">
-          <input type="hidden" name="responsavel_id" value="{{ editando_responsavel|default_if_none:'' }}">
-
-          {% if form_responsavel.non_field_errors %}
-            <div class="pvc-erro">{{ form_responsavel.non_field_errors }}</div>
-          {% endif %}
-
-          <div class="pvc-grid">
-            <div class="pvc-campo {% if form_responsavel.area.errors %}is-erro{% endif %}">
-              <label for="{{ form_responsavel.area.id_for_label }}">Área de operação</label>
-              {{ form_responsavel.area }}
-              {% if form_responsavel.area.errors %}<div class="pvc-erro">{{ form_responsavel.area.errors }}</div>{% endif %}
-            </div>
-
-            <div class="pvc-campo {% if form_responsavel.tecnico.errors %}is-erro{% endif %}">
-              <label for="{{ form_responsavel.tecnico.id_for_label }}">Técnico</label>
-              {{ form_responsavel.tecnico }}
-              {% if form_responsavel.tecnico.errors %}<div class="pvc-erro">{{ form_responsavel.tecnico.errors }}</div>{% endif %}
-            </div>
-
-            <div class="pvc-campo {% if form_responsavel.subtipo.errors %}is-erro{% endif %}">
-              <label for="{{ form_responsavel.subtipo.id_for_label }}">Subtipo</label>
-              {{ form_responsavel.subtipo }}
-              <span class="pvc-dica">Vazio = vale para todos os subtipos da área.</span>
-              {% if form_responsavel.subtipo.errors %}<div class="pvc-erro">{{ form_responsavel.subtipo.errors }}</div>{% endif %}
-            </div>
-
-            <div class="pvc-campo">
-              <label for="{{ form_responsavel.ativo.id_for_label }}">Ativo</label>
-              <span style="display:flex;align-items:center;gap:var(--space-2);height:var(--pv-control-h);">
-                {{ form_responsavel.ativo }}
-                <span class="pvc-dica">Desmarcado, deixa de ser o padrão sem perder o histórico.</span>
-              </span>
-            </div>
-
-            <div class="pvc-campo is-largo">
-              <label for="{{ form_responsavel.observacao.id_for_label }}">Observação</label>
-              {{ form_responsavel.observacao }}
-            </div>
-          </div>
-
-          <div class="pvc-acoes">
-            <button type="submit" class="btn btn-sm btn-primary">
-              <i class="fa fa-floppy-disk" aria-hidden="true"></i> Salvar responsável
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {% if responsaveis %}
-        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
-          <div class="pvc-lista">
-            {% for r in responsaveis %}
-              <div class="pvc-linha {% if not r.ativo %}is-inativa{% endif %}">
-                <span class="pvc-area-tag is-{{ r.area }}">{{ r.get_area_display }}</span>
-                <div class="pvc-linha-info">
-                  <span class="pvc-linha-titulo">{{ r.tecnico.get_full_name|default:r.tecnico.username }}</span>
-                  <span class="pvc-linha-sub">
-                    {% if r.subtipo %}{{ r.subtipo.nome }}{% else %}Todos os subtipos (padrão da área){% endif %}
-                    {% if not r.ativo %} · inativo{% endif %}
-                    {% if r.observacao %} · {{ r.observacao|truncatechars:60 }}{% endif %}
-                  </span>
-                </div>
-                <div class="pvc-linha-acoes">
-                  <form method="post" onsubmit="return confirm('Remover esta responsabilidade? As execuções já registradas não mudam.');">
-                    {% csrf_token %}
-                    <input type="hidden" name="acao" value="remover_responsavel">
-                    <input type="hidden" name="responsavel_id" value="{{ r.pk }}">
-                    <button type="submit" class="btn btn-sm btn-ghost" title="Remover responsabilidade">
-                      <i class="fa fa-trash" aria-hidden="true"></i>
-                      <span class="sr-only">Remover</span>
-                    </button>
-                  </form>
-                </div>
-              </div>
+        {% if parque.tecnicos %}
+          <div class="pvc-tecs">
+            {% for tec in parque.tecnicos %}
+              {% include 'front/preventivas/_pvc_tecnico.html' with tec=tec %}
             {% endfor %}
           </div>
-        </div>
-      {% else %}
-        <div class="pv-card-body" style="border-top:1px solid var(--pv-border);">
+        {% else %}
           <div class="ui-empty">
             <div class="ui-empty-ico"><i class="fa fa-user-slash" aria-hidden="true"></i></div>
             <p class="ui-empty-title">Nenhum responsável definido</p>
             <p class="ui-empty-text">
               Sem responsável, a pendência de preventiva não tem dono antes do agendamento
-              e o painel de metas avisa a área como vaga.
+              e o painel de metas avisa a área como vaga. Abra “Gerenciar responsáveis” para definir.
             </p>
           </div>
+        {% endif %}
+      </div>
+
+      {# ── Cadastro: sai do primeiro plano, mas abre sozinho quando há erro (senão o erro fica escondido) ── #}
+      <details class="pvc-gerenciar"{% if form_responsavel.errors or editando_responsavel %} open{% endif %}>
+        <summary>
+          <i class="fa fa-sliders" aria-hidden="true"></i> Gerenciar responsáveis
+          <span class="pvc-sub-n">{{ responsaveis|length }}</span>
+          <i class="fa fa-chevron-down pvc-seta" aria-hidden="true"></i>
+        </summary>
+
+        <div class="pvc-gerenciar-corpo">
+          <form method="post" class="pvc-form">
+            {% csrf_token %}
+            <input type="hidden" name="acao" value="salvar_responsavel">
+            <input type="hidden" name="responsavel_id" value="{{ editando_responsavel|default_if_none:'' }}">
+
+            {% if form_responsavel.non_field_errors %}
+              <div class="pvc-erro">{{ form_responsavel.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="pvc-grid">
+              <div class="pvc-campo {% if form_responsavel.area.errors %}is-erro{% endif %}">
+                <label for="{{ form_responsavel.area.id_for_label }}">Área de operação</label>
+                {{ form_responsavel.area }}
+                {% if form_responsavel.area.errors %}<div class="pvc-erro">{{ form_responsavel.area.errors }}</div>{% endif %}
+              </div>
+
+              <div class="pvc-campo {% if form_responsavel.tecnico.errors %}is-erro{% endif %}">
+                <label for="{{ form_responsavel.tecnico.id_for_label }}">Técnico</label>
+                {{ form_responsavel.tecnico }}
+                {% if form_responsavel.tecnico.errors %}<div class="pvc-erro">{{ form_responsavel.tecnico.errors }}</div>{% endif %}
+              </div>
+
+              <div class="pvc-campo {% if form_responsavel.subtipo.errors %}is-erro{% endif %}">
+                <label for="{{ form_responsavel.subtipo.id_for_label }}">Subtipo</label>
+                {{ form_responsavel.subtipo }}
+                <span class="pvc-dica">Vazio = vale para todos os subtipos da área.</span>
+                {% if form_responsavel.subtipo.errors %}<div class="pvc-erro">{{ form_responsavel.subtipo.errors }}</div>{% endif %}
+              </div>
+
+              <div class="pvc-campo">
+                <label for="{{ form_responsavel.ativo.id_for_label }}">Ativo</label>
+                <span style="display:flex;align-items:center;gap:var(--space-2);height:var(--pv-control-h);">
+                  {{ form_responsavel.ativo }}
+                  <span class="pvc-dica">Desmarcado, deixa de ser o padrão sem perder o histórico.</span>
+                </span>
+              </div>
+
+              <div class="pvc-campo is-largo">
+                <label for="{{ form_responsavel.observacao.id_for_label }}">Observação</label>
+                {{ form_responsavel.observacao }}
+              </div>
+            </div>
+
+            <div class="pvc-acoes">
+              <button type="submit" class="btn btn-sm btn-primary">
+                <i class="fa fa-floppy-disk" aria-hidden="true"></i> Salvar responsável
+              </button>
+            </div>
+          </form>
+
+          {% if responsaveis %}
+            <div class="pvc-lista">
+              {% for r in responsaveis %}
+                <div class="pvc-linha {% if not r.ativo %}is-inativa{% endif %}">
+                  <span class="pvc-area-tag is-{{ r.area }}">{{ r.get_area_display }}</span>
+                  <div class="pvc-linha-info">
+                    <span class="pvc-linha-titulo">{{ r.tecnico.get_full_name|default:r.tecnico.username }}</span>
+                    <span class="pvc-linha-sub">
+                      {% if r.subtipo %}{{ r.subtipo.nome }}{% else %}Todos os subtipos (padrão da área){% endif %}
+                      {% if not r.ativo %} · inativo{% endif %}
+                      {% if r.observacao %} · {{ r.observacao|truncatechars:60 }}{% endif %}
+                    </span>
+                  </div>
+                  <div class="pvc-linha-acoes">
+                    <form method="post" onsubmit="return confirm('Remover esta responsabilidade? As execuções já registradas não mudam.');">
+                      {% csrf_token %}
+                      <input type="hidden" name="acao" value="remover_responsavel">
+                      <input type="hidden" name="responsavel_id" value="{{ r.pk }}">
+                      <button type="submit" class="btn btn-sm btn-ghost" title="Remover responsabilidade">
+                        <i class="fa fa-trash" aria-hidden="true"></i>
+                        <span class="sr-only">Remover</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
         </div>
-      {% endif %}
+      </details>
     </section>
 
     {# ══════════════ CICLOS DE REFERÊNCIA ══════════════ #}

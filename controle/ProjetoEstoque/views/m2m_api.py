@@ -13,7 +13,11 @@ já foi guardado — saneado na gravação — e ainda passa por `tim.sanear` na
 """
 
 import json
+import os
+import subprocess
+import sys
 
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -137,6 +141,53 @@ def m2m_chip_atualizar(request, pk):
             "consumo_base": m2m.base_de_consumo(m2m.configuracao_atual()["mapeamento"]),
         }, request=request)
     return JsonResponse(resposta)
+
+
+def _iniciar_lote_em_segundo_plano(usuario) -> None:
+    """Abre o processo do "Atualizar todos" (`monitorar_m2m --todos`) e volta na hora, sem esperar por ele.
+
+    Outro processo, e não uma thread da requisição: o lote leva minutos, e o servidor web não pode ficar com um
+    trabalhador preso nem perdê-lo num reinício. Ele sai do servidor (nova sessão/grupo, sem janela, sem entrada nem saída
+    presas) e o que fizer fica no banco — `M2MExecucao`, é de lá que a faixa lê o "X de N". Quem impede dois lotes ao mesmo
+    tempo é a trava do ciclo, não esta função."""
+    comando = [
+        sys.executable, str(settings.BASE_DIR / "manage.py"), "monitorar_m2m", "--todos", "--usuario", usuario.get_username(),
+    ]
+    opcoes = {"cwd": str(settings.BASE_DIR), "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        opcoes["creationflags"] = (
+            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        opcoes["start_new_session"] = True
+    subprocess.Popen(comando, **opcoes)
+
+
+@exige_frota("consultar_conectividade")
+@exige_api
+@require_POST
+def m2m_atualizar_todos(request):
+    """Dispara o "Atualizar todos": uma execução que atualiza todos os chips consultáveis (`atualizar_todos`).
+
+    202 — o processo foi aberto; `total` é quantos chips ele vai atualizar. O andamento NÃO volta aqui: a faixa de
+    sincronização lê o "X de N" do banco (`m2m_sincronizacao`, chave `lote`).
+    409 — não começou, com `codigo` e `mensagem` (sem configuração, credencial recusada, API limitando, outra
+    atualização em andamento, nenhum chip consultável). Esta rota nunca consulta a API: só confere e abre o processo."""
+    try:
+        total = m2m.conferir_atualizar_todos()
+    except m2m.AtualizacaoRecusada as exc:
+        return JsonResponse({
+            "ok": False, "recusada": True, "codigo": exc.codigo, "tom": "aviso",
+            "mensagem": " ".join(exc.messages), "aguardar_s": exc.aguardar_s,
+        }, status=409)
+    _iniciar_lote_em_segundo_plano(request.user)
+    return JsonResponse({
+        "ok": True, "total": total,
+        "mensagem": (
+            f"Atualizando {total} chip{'s' if total != 1 else ''}. A API limita as consultas por minuto, então leva alguns "
+            "minutos: acompanhe pela faixa de sincronização."
+        ),
+    }, status=202)
 
 
 @exige_frota("importar_chips")
@@ -319,6 +370,7 @@ def m2m_sincronizacao(request):
         "ultima_resposta_valida": quando(e["ultima_resposta_valida"]),
         "proxima": quando(e["proxima"]),
         "vencidos": e["vencidos"],
+        "lote": e["lote"],
         "ciclo": ({
             "iniciado": quando(exec_.iniciada_em), "estado": exec_.get_estado_display(), "consultados": exec_.consultados,
             "sucessos": exec_.sucessos, "falhas": exec_.falhas, "chamadas": exec_.chamadas,

@@ -1,0 +1,87 @@
+{% comment %}Cartão de UM técnico em Responsáveis por Área: o que ele responde, na ordem em que vale a
+   pena visitar. Fatia de preventiva_metas_config.html — recebe `tec`, um item de
+   `parque.tecnicos` (ver `preventiva_meta_service.parque_por_responsavel`).
+
+   `<details>` nativo, sem JS: o cartão de quem está logado já vem aberto; os outros mostram só a
+   linha-resumo. Pendentes à frente e agrupados por localidade (uma viagem = um local); "em dia" e
+   "fora de operação" ficam recolhidos, porque não pedem ação.{% endcomment %}
+<details class="pvc-tec"{% if tec.voce %} open{% endif %}>
+  <summary class="pvc-tec-head">
+    <span class="pvc-tec-id">
+      <span class="pvc-tec-nome">
+        {{ tec.nome }}{% if tec.voce %} <span class="pvc-voce">você</span>{% endif %}
+      </span>
+      <span class="pvc-tec-escopos">
+        {% for e in tec.escopos %}
+          <span class="pvc-area-tag is-{{ e.area }}">{{ e.area_label }}{% if e.subtipo %} · {{ e.subtipo }}{% endif %}</span>
+        {% endfor %}
+      </span>
+    </span>
+    <span class="pvc-tec-numeros">
+      <span class="pvc-num"><strong>{{ tec.total }}</strong> equipamento{{ tec.total|pluralize }}</span>
+      <span class="pvc-num{% if tec.pendentes %} is-pendente{% endif %}"><strong>{{ tec.pendentes }}</strong> pendente{{ tec.pendentes|pluralize }}</span>
+      {% if tec.atrasados %}
+        <span class="pvc-num is-atrasado"><strong>{{ tec.atrasados }}</strong> atrasado{{ tec.atrasados|pluralize }}</span>
+      {% endif %}
+    </span>
+    <i class="fa fa-chevron-down pvc-tec-seta" aria-hidden="true"></i>
+  </summary>
+
+  <div class="pvc-tec-corpo">
+    {% if not tec.total %}
+      <p class="pvc-vazio">
+        Nenhum equipamento classificado nesta responsabilidade.
+        A área é definida no cadastro de cada equipamento, em Controle Operacional.
+      </p>
+    {% else %}
+      {% if tec.locais %}
+        {% for grupo in tec.locais %}
+          <section class="pvc-local">
+            <h3 class="pvc-local-nome">
+              {{ grupo.local }}
+              <span class="pvc-local-n" title="{{ grupo.total }} pendente{{ grupo.total|pluralize }} neste local">{{ grupo.total }}</span>
+            </h3>
+            <ul class="pvc-eqs">
+              {% for e in grupo.itens %}
+                {% include 'front/preventivas/_pvc_equipamento.html' with e=e tec=tec iniciar=True %}
+              {% endfor %}
+            </ul>
+          </section>
+        {% endfor %}
+      {% else %}
+        <p class="pvc-tudo-ok">
+          <i class="fa fa-circle-check" aria-hidden="true"></i>
+          Nada pendente: todos os equipamentos em operação estão em dia.
+        </p>
+      {% endif %}
+
+      {% if tec.em_dia %}
+        <details class="pvc-sub">
+          <summary>
+            <i class="fa fa-chevron-right pvc-seta" aria-hidden="true"></i>
+            Em dia <span class="pvc-sub-n">{{ tec.em_dia|length }}</span>
+          </summary>
+          <ul class="pvc-eqs">
+            {% for e in tec.em_dia %}
+              {% include 'front/preventivas/_pvc_equipamento.html' with e=e tec=tec iniciar=True %}
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+
+      {% if tec.fora_de_operacao %}
+        <details class="pvc-sub">
+          <summary title="Continuam sendo dele, mas não entram no ciclo: a contagem de preventiva fica congelada enquanto o equipamento não está ativo.">
+            <i class="fa fa-chevron-right pvc-seta" aria-hidden="true"></i>
+            Fora de operação <span class="pvc-sub-n">{{ tec.fora_de_operacao|length }}</span>
+          </summary>
+          <ul class="pvc-eqs">
+            {% for e in tec.fora_de_operacao %}
+              {% include 'front/preventivas/_pvc_equipamento.html' with e=e tec=tec iniciar=False %}
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+    {% endif %}
+  </div>
+</details>

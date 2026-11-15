@@ -23,7 +23,9 @@ from django import template
 from django.utils import timezone
 from django.utils.html import format_html
 
+from ProjetoEstoque.models import M2MChip
 from services import frota_service
+from services import frota_vinculo_service
 from services import m2m_interpretacao as interp
 
 register = template.Library()
@@ -168,6 +170,9 @@ ROTULOS_DE_STATUS = {
     "desativado": "Desativado",
     "disponivel": "Disponível",
     "vinculado": "Vinculado",
+    "reservado": "Reservado",               # só do chip: separado para alguém, ainda sem vínculo
+    "pausado": "Pausado",                    # só do chip
+    "defeito": "Com defeito",                # só do chip
     # importação de planilha (a decisão de gente também): prévia, confirmada, cancelada
     "previa": "Prévia",
     "confirmada": "Confirmada",
@@ -198,6 +203,15 @@ def frota_status(chave):
     return format_html(
         '<span class="m2m-status" data-status="{}">{}</span>', chave, ROTULOS_DE_STATUS.get(chave, chave),
     )
+
+
+@register.simple_tag
+def situacoes_livres_do_chip():
+    """As situações para onde um chip LIVRE vai ou entre as quais ele se move, como `[(valor, rótulo)]`. É UMA lista só
+    (`frota_vinculo_service.SITUACOES_LIVRES`) para os diálogos de desvincular, substituir e mudar situação — se amanhã
+    entrar uma situação nova, os três a oferecem sem mexer em template."""
+    rotulos = dict(M2MChip.SituacaoUso.choices)
+    return [(valor, rotulos[valor]) for valor in frota_vinculo_service.SITUACOES_LIVRES]
 
 
 @register.simple_tag

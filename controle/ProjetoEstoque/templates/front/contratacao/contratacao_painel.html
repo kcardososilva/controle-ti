@@ -3,11 +3,16 @@
 
 {% block title %}Contratações{% endblock %}
 {% block page_title %}Contratações{% endblock %}
-{% block page_subtitle %}Admissão de colaboradores — equipamento, acessos e licenças{% endblock %}
+{% comment %}Sem subtítulo na topbar: o corpo da página já abre com o próprio título e a linha que o descreve.{% endcomment %}
+{% block page_subtitle %}{% endblock %}
 
 {% comment %}"Nova contratação" NÃO fica na topbar: por pedido do usuário, a ação
    mora no corpo da página, ao lado do quadro que ela alimenta — é onde o
-   Planner põe o "Adicionar um novo bucket".{% endcomment %}
+   Planner põe o "Adicionar um novo bucket".
+
+   Esta tela é MINIMALISTA por pedido do usuário (15/11/2026): o que pede ação
+   (atrasadas, sem equipamento, o pedido de estrutura) aparece; o que é detalhe da
+   vaga (centro de custo, tipo de computador, lista de pendências) mora no detalhe.{% endcomment %}
 
 {% block extra_css %}
   {% include 'front/contratacao/_ctr_design_system.html' %}
@@ -18,22 +23,14 @@
 
   <section class="page-header page-header-compact" aria-labelledby="ctr-hero-title">
     <div class="page-header-main">
-      <div class="page-kicker">
-        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-        Pessoas &amp; TI
-      </div>
       <h2 class="page-heading" id="ctr-hero-title">Contratações</h2>
-      <p class="page-description">
-        O que cada pessoa que está entrando precisa para trabalhar — computador, telefonia,
-        acessos de sistema e licenças — do pedido do gestor até o primeiro dia com tudo
-        funcionando.
-      </p>
+      <p class="page-description">Do pedido do gestor ao primeiro dia com tudo funcionando.</p>
     </div>
     <div class="page-header-aside">
-      <a href="{% url 'chamados_lista' %}" class="ctr-btn is-grande">
+      <a href="{% url 'chamados_lista' %}" class="ctr-btn">
         <i class="fa fa-headset" aria-hidden="true"></i> Chamados de TI
       </a>
-      <a href="{% url 'contratacao_create' %}" class="ctr-btn is-primary is-grande">
+      <a href="{% url 'contratacao_create' %}" class="ctr-btn is-primary">
         <i class="fa fa-plus" aria-hidden="true"></i> Nova contratação
       </a>
     </div>
@@ -66,8 +63,7 @@
         </h2>
         <p class="ctr-fila-sub">
           {{ fila_estrutura_total }} vaga{{ fila_estrutura_total|pluralize }} em aberto
-          {{ fila_estrutura_total|pluralize:"precisa,precisam" }} de uma ação sua. É um
-          clique para abrir o pedido, já preenchido com o que a vaga informa — você só confere e confirma.
+          {{ fila_estrutura_total|pluralize:"precisa,precisam" }} do seu pedido. É só conferir e confirmar.
         </p>
       </div>
       <ul class="ctr-fila-lista">
@@ -100,84 +96,46 @@
       {% if fila_estrutura_resto %}
         <p class="ctr-fila-mais">
           + {{ fila_estrutura_resto }} outra{{ fila_estrutura_resto|pluralize }}
-          na coluna “Em aberto” do quadro, com o selo da situação em cada cartão.
+          na coluna “Em aberto”.
         </p>
       {% endif %}
     </section>
   {% endif %}
 
-  {# ── Herói: quanto do mês já fechou ──────────────────────────────── #}
-  <section class="ctr-hero">
-    <div class="ctr-hero-figura">
-      <span class="ctr-hero-rotulo">Concluídas no mês</span>
-      <span class="ctr-hero-valor">{{ painel.pct_mes }}<small>%</small></span>
-      <span class="ctr-hero-sub">
-        {{ painel.kpis.concluidas_mes }} fechada{{ painel.kpis.concluidas_mes|pluralize }} ·
-        {{ painel.kpis.em_andamento }} em andamento
-      </span>
+{% comment %}Os quatro números numa faixa só, sem cartão. Cor só quando há o que dizer (atrasada, concluída): o zero fica
+     apagado, para o olho ir direto ao que não é zero. A nota longa de cada número é o `title`. O percentual do mês
+     fica ao lado das concluídas, e a média de dias só aparece se existir.{% endcomment %}
+  <dl class="ctr-numeros" aria-label="Resumo das contratações">
+    <div class="ctr-numeros-item {% if not painel.kpis.abertas %}is-zero{% endif %}" title="Vagas ainda sem contratado">
+      <dt>Em aberto</dt>
+      <dd>{{ painel.kpis.abertas }}</dd>
     </div>
-    <div class="ctr-hero-corpo">
-      <div class="ctr-hero-linha">
-        <span class="ctr-hero-titulo">Mês de referência</span>
-        <span class="ctr-hero-datas">
-          desde {{ painel.mes_referencia|date:"d/m/Y" }}
-          {% if painel.tempo_medio_dias %}
-            · média de {{ painel.tempo_medio_dias }} dia{{ painel.tempo_medio_dias|pluralize }} entre abrir e concluir
-          {% endif %}
-        </span>
-      </div>
-      <div class="ctr-regua {% if painel.kpis.atrasadas %}is-aviso{% else %}is-ok{% endif %}"
-           style="--ctr-exec: {{ painel.pct_mes }}%;"
-           role="img"
-           aria-label="{{ painel.pct_mes }}% das contratações do mês concluídas">
-        <span class="ctr-regua-fill"></span>
-      </div>
-      {% if painel.kpis.atrasadas %}
-        <p class="ctr-vaga-meta">
-          <span class="ctr-chip is-perigo">
-            <i class="fa fa-clock" aria-hidden="true"></i>
-            {{ painel.kpis.atrasadas }} passou da data prevista de início
-          </span>
-        </p>
-      {% endif %}
+    <div class="ctr-numeros-item {% if not painel.kpis.sem_equipamento %}is-zero{% endif %}" title="Pedem máquina e não têm equipamento reservado">
+      <dt>Sem equipamento</dt>
+      <dd>{{ painel.kpis.sem_equipamento }}</dd>
     </div>
-  </section>
-
-  {# ── KPIs ─────────────────────────────────────────────────────────── #}
-  <section class="ctr-kpis">
-    <div class="ctr-kpi">
-      <span class="ctr-kpi-label"><i class="fa fa-folder-open" aria-hidden="true"></i> Em aberto</span>
-      <span class="ctr-kpi-valor">{{ painel.kpis.abertas }}</span>
-      <span class="ctr-kpi-nota">vagas ainda sem contratado</span>
+    <div class="ctr-numeros-item {% if painel.kpis.atrasadas %}is-alerta{% else %}is-zero{% endif %}" title="Já passaram da previsão de início">
+      <dt>Atrasadas</dt>
+      <dd>{{ painel.kpis.atrasadas }}</dd>
     </div>
-    <div class="ctr-kpi">
-      <span class="ctr-kpi-label"><i class="fa fa-laptop" aria-hidden="true"></i> Sem equipamento</span>
-      <span class="ctr-kpi-valor">{{ painel.kpis.sem_equipamento }}</span>
-      <span class="ctr-kpi-nota">pedem máquina e não têm equipamento reservado</span>
+    <div class="ctr-numeros-item {% if painel.kpis.concluidas_mes %}is-ok{% else %}is-zero{% endif %}"
+         title="Concluídas desde {{ painel.mes_referencia|date:'d/m/Y' }}{% if painel.tempo_medio_dias %} · média de {{ painel.tempo_medio_dias }} dia{{ painel.tempo_medio_dias|pluralize }} entre abrir e concluir{% endif %}">
+      <dt>Concluídas no mês</dt>
+      <dd>{{ painel.kpis.concluidas_mes }}{% if painel.kpis.concluidas_mes %}<small>{{ painel.pct_mes }}%</small>{% endif %}</dd>
     </div>
-    <div class="ctr-kpi {% if painel.kpis.atrasadas %}is-alerta{% endif %}">
-      <span class="ctr-kpi-label"><i class="fa fa-triangle-exclamation" aria-hidden="true"></i> Atrasadas</span>
-      <span class="ctr-kpi-valor">{{ painel.kpis.atrasadas }}</span>
-      <span class="ctr-kpi-nota">já passaram da previsão de início</span>
-    </div>
-    <div class="ctr-kpi is-ok">
-      <span class="ctr-kpi-label"><i class="fa fa-circle-check" aria-hidden="true"></i> Concluídas</span>
-      <span class="ctr-kpi-valor">{{ painel.kpis.concluidas_mes }}</span>
-      <span class="ctr-kpi-nota">neste mês</span>
-    </div>
-  </section>
+  </dl>
 
   {# ── Filtros ──────────────────────────────────────────────────────── #}
-  <form method="get" class="ctr-filtros">
+  <form method="get" class="ctr-filtros is-leve">
     <div class="ctr-filtro">
-      <label class="ctr-filtro-label" for="ctrBusca">Buscar</label>
+      <label class="ctr-sr-only" for="ctrBusca">Buscar</label>
       <input type="text" id="ctrBusca" name="q" value="{{ filtros.q }}"
-             placeholder="Cargo, contratado ou gestor">
+             placeholder="Buscar cargo, contratado ou gestor">
     </div>
     <div class="ctr-filtro">
-      <label class="ctr-filtro-label" for="ctrCc">Centro de custo</label>
+      <label class="ctr-sr-only" for="ctrCc">Centro de custo</label>
       <select id="ctrCc" name="centro_custo">
-        <option value="">Todos</option>
+        <option value="">Centro de custo</option>
         {% for cc in centros_custo %}
           <option value="{{ cc.pk }}" {% if filtros.centro_custo == cc.pk|stringformat:"s" %}selected{% endif %}>
             {{ cc.numero }} — {{ cc.departamento }}
@@ -186,9 +144,9 @@
       </select>
     </div>
     <div class="ctr-filtro">
-      <label class="ctr-filtro-label" for="ctrLoc">Localidade</label>
+      <label class="ctr-sr-only" for="ctrLoc">Localidade</label>
       <select id="ctrLoc" name="localidade">
-        <option value="">Todas</option>
+        <option value="">Localidade</option>
         {% for loc in localidades %}
           <option value="{{ loc.pk }}" {% if filtros.localidade == loc.pk|stringformat:"s" %}selected{% endif %}>
             {{ loc.local }}
@@ -197,21 +155,17 @@
       </select>
     </div>
     <div class="ctr-filtros-acoes">
-      <button type="submit" class="ctr-btn is-primary">
-        <i class="fa fa-magnifying-glass" aria-hidden="true"></i> Filtrar
-      </button>
-      <a href="{% url 'contratacao_painel' %}" class="ctr-btn">Limpar</a>
+      <button type="submit" class="ctr-btn is-primary">Filtrar</button>
+      {% if filtros.q or filtros.centro_custo or filtros.localidade %}
+        <a href="{% url 'contratacao_painel' %}" class="ctr-btn">Limpar</a>
+      {% endif %}
       {% if pode_gerenciar_contratacao %}
-      <a href="{% url 'sistema_corporativo_list' %}" class="ctr-btn is-ghost">
-        <i class="fa fa-sliders" aria-hidden="true"></i> Sistemas
-      </a>
+      <a href="{% url 'sistema_corporativo_list' %}" class="ctr-btn is-ghost">Sistemas</a>
 {% comment %}Atalho para a tela de Acessos restritos. Fica no CORPO (barra de filtros),
       nao na topbar nem no menu lateral -- regra 16 do CLAUDE.md. Visivel so para
       staff: so administrador concede acesso.{% endcomment %}
       {% if user.is_staff or user.is_superuser %}
-      <a href="{% url 'acesso_restrito_gerenciar' %}" class="ctr-btn is-ghost">
-        <i class="fa fa-user-lock" aria-hidden="true"></i> Acessos
-      </a>
+      <a href="{% url 'acesso_restrito_gerenciar' %}" class="ctr-btn is-ghost">Acessos</a>
       {% endif %}
       {% endif %}
     </div>
@@ -221,13 +175,12 @@
   <section class="ctr-colunas">
     {% for coluna in painel.colunas %}
       <article class="ctr-coluna">
-        <header class="ctr-coluna-head">
+        <header class="ctr-coluna-head" title="{{ coluna.descricao }}">
           <div class="ctr-coluna-titulo">
             <i class="fa {{ coluna.icone }}" aria-hidden="true"></i>
             {{ coluna.label }}
             <span class="ctr-coluna-contador">({{ coluna.total }})</span>
           </div>
-          <p class="ctr-coluna-desc">{{ coluna.descricao }}</p>
         </header>
 
         <div class="ctr-coluna-lista">
@@ -242,9 +195,7 @@
           {% for card in coluna.cards %}
             <a class="ctr-vaga {% if card.atrasada %}is-atrasada{% endif %}"
                href="{% url 'contratacao_detail' card.pk %}">
-              <div class="ctr-vaga-topo">
-                <span class="ctr-vaga-cargo">{{ card.cargo }}</span>
-              </div>
+              <span class="ctr-vaga-cargo">{{ card.cargo }}</span>
 
               <div class="ctr-vaga-pessoa">
                 {% if card.nome_contratado %}
@@ -256,14 +207,8 @@
                 {% endif %}
               </div>
 
+              {% if card.data_prevista_inicio or card.sem_equipamento or card.estrutura or card.chamados_ti %}
               <div class="ctr-vaga-meta">
-                <span class="ctr-chip">
-                  <i class="fa {% if card.computador == 'desktop' %}fa-desktop{% elif card.computador == 'nenhum' %}fa-ban{% else %}fa-laptop{% endif %}" aria-hidden="true"></i>
-                  {{ card.get_computador_display }}
-                </span>
-                {% if card.centro_custo %}
-                  <span class="ctr-chip">{{ card.centro_custo.departamento|truncatechars:22 }}</span>
-                {% endif %}
                 {% if card.data_prevista_inicio %}
                   <span class="ctr-chip {% if card.atrasada %}is-perigo{% endif %}">
                     <i class="fa fa-calendar-day" aria-hidden="true"></i>
@@ -290,25 +235,15 @@
                   </span>
                 {% endif %}
               </div>
+              {% endif %}
 
-              <div class="ctr-vaga-placar">
+              <div class="ctr-vaga-placar" title="Itens de preparação prontos para o primeiro dia">
                 <div class="ctr-regua {% if card.placar.completo %}is-ok{% endif %}"
                      style="--ctr-exec: {{ card.placar.pct }}%;">
                   <span class="ctr-regua-fill"></span>
                 </div>
                 <span>{{ card.placar.feitos }}/{{ card.placar.total }}</span>
               </div>
-
-              {% if card.lista_pendencias %}
-                <div class="ctr-vaga-pend">
-                  {% for falta in card.lista_pendencias|slice:":2" %}
-                    <span><i class="fa fa-circle-dot" aria-hidden="true"></i> {{ falta }}</span>
-                  {% endfor %}
-                  {% if card.lista_pendencias|length > 2 %}
-                    <span><b>+{{ card.lista_pendencias|length|add:"-2" }}</b> outra(s) pendência(s)</span>
-                  {% endif %}
-                </div>
-              {% endif %}
             </a>
           {% empty %}
             <div class="ctr-vazio">

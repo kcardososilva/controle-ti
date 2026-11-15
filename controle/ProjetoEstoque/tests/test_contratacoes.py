@@ -454,6 +454,124 @@ class PainelTests(BaseContratacaoTests):
         self.assertEqual(placar["feitos"], 0)
 
 
+class PainelMinimalistaTests(BaseContratacaoTests):
+    """O painel de 15/11/2026: tela limpa. O que estes testes seguram é o que o pedido tirou da tela E o que NÃO podia sair
+    (o que pede ação continua lá), porque tirar demais também passa calado: a tela abre 200 e a informação some."""
+
+    def painel(self, **filtros):
+        return self.client.get(reverse("contratacao_painel"), filtros).content.decode()
+
+    @staticmethod
+    def cartao_de(html, cargo):
+        """O HTML do cartão da vaga (`<a class="ctr-vaga ...">...</a>`) que tem o cargo."""
+        for bloco in re.findall(r'<a class="ctr-vaga[^"]*"\s+href="[^"]*">.*?</a>', html, flags=re.S):
+            if cargo in bloco:
+                return bloco
+        raise AssertionError(f"cartão de {cargo!r} não encontrado no painel")
+
+    def test_os_numeros_ficam_numa_faixa_so_sem_o_cartao_heroi_nem_os_quatro_kpis(self):
+        html = self.painel()
+        self.assertEqual(html.count('class="ctr-numeros"'), 1)
+        for rotulo in ("Em aberto", "Sem equipamento", "Atrasadas", "Concluídas no mês"):
+            self.assertRegex(html, rf"<dt>{rotulo}</dt>")
+        for sobra in ("ctr-kpi", 'class="ctr-hero', "Mês de referência", "vagas ainda sem contratado</span>"):
+            self.assertNotIn(sobra, html)
+
+    def test_cabecalho_sem_selo_repetido_e_sem_subtitulo_duplicado_na_topbar(self):
+        html = self.painel()
+        self.assertNotIn("Pessoas &amp; TI", html)
+        self.assertNotIn("page-kicker", html)
+        self.assertIn('<span class="topbar-subtitle"></span>', html)
+        self.assertIn("Do pedido do gestor ao primeiro dia com tudo funcionando.", html)
+        # as duas ações da página continuam no CORPO (regra 16), sem o tamanho "grande"
+        self.assertIn(reverse("contratacao_create"), html)
+        self.assertIn(reverse("chamados_lista"), html)
+        self.assertNotIn("is-grande", html)
+
+    def test_zero_fica_apagado_e_so_o_que_ha_ganha_cor(self):
+        html = self.painel()
+        self.assertEqual(html.count("ctr-numeros-item is-zero"), 4)
+        self.assertNotIn("is-alerta", html)
+        ontem = datetime.date.today() - datetime.timedelta(days=3)
+        Contratacao.objects.create(cargo="Atrasada", data_prevista_inicio=ontem)
+        Contratacao.objects.create(
+            cargo="Fechada", computador="nenhum", colaborador_nome="Alguém",
+            status=StatusContratacaoChoices.CONCLUIDA, concluida_em=timezone.now(),
+        )
+        html = self.painel()
+        self.assertIn("ctr-numeros-item is-alerta", html)
+        self.assertIn("ctr-numeros-item is-ok", html)
+        # os que ainda são zero seguem apagados: a conta vem dos números do service, não de um palpite
+        kpis = cs.painel()["kpis"]
+        zeros = sum(1 for n in (kpis["abertas"], kpis["sem_equipamento"], kpis["atrasadas"], kpis["concluidas_mes"]) if not n)
+        self.assertEqual(html.count("ctr-numeros-item is-zero"), zeros)
+
+    def test_percentual_do_mes_so_aparece_quando_ha_concluidas(self):
+        self.assertNotIn("<small>", re.search(r'<dl class="ctr-numeros".*?</dl>', self.painel(), re.S).group(0))
+        Contratacao.objects.create(
+            cargo="Fechada", computador="nenhum", colaborador_nome="Alguém",
+            status=StatusContratacaoChoices.CONCLUIDA, concluida_em=timezone.now(),
+        )
+        faixa = re.search(r'<dl class="ctr-numeros".*?</dl>', self.painel(), re.S).group(0)
+        self.assertRegex(faixa, r"<small>\d+%</small>")
+        self.assertIn("Concluídas desde", faixa)                                # a nota longa virou `title`
+
+    def test_filtros_sem_rotulo_a_mostra_e_com_os_mesmos_nomes_de_campo(self):
+        html = self.painel()
+        self.assertIn('class="ctr-filtros is-leve"', html)
+        for campo, nome in (("ctrBusca", "q"), ("ctrCc", "centro_custo"), ("ctrLoc", "localidade")):
+            self.assertIn(f'<label class="ctr-sr-only" for="{campo}">', html)
+            self.assertIn(f'id="{campo}" name="{nome}"', html)
+        self.assertIn('placeholder="Buscar cargo, contratado ou gestor"', html)
+        self.assertIn('<option value="">Centro de custo</option>', html)
+        self.assertIn('<option value="">Localidade</option>', html)
+        self.assertNotIn("ctr-filtro-label", html)
+
+    def test_limpar_so_aparece_com_filtro_ativo(self):
+        limpar = f'href="{reverse("contratacao_painel")}" class="ctr-btn">Limpar</a>'
+        self.assertNotIn(limpar, self.painel())
+        self.assertIn(limpar, self.painel(q="abc"))
+        self.assertIn(limpar, self.painel(centro_custo=str(self.cc.pk)))
+
+    def test_atalhos_de_configuracao_continuam_so_para_quem_gerencia(self):
+        html = self.painel()
+        self.assertIn(reverse("sistema_corporativo_list"), html)
+        self.assertIn(reverse("acesso_restrito_gerenciar"), html)
+
+    def test_o_cartao_da_vaga_fica_so_com_o_essencial(self):
+        ontem = datetime.date.today() - datetime.timedelta(days=2)
+        centro = CentroCusto.objects.create(numero="777", departamento="Departamento Unico Zeta")
+        vaga = Contratacao.objects.create(
+            cargo="Analista Exclusivo", colaborador_nome="Fulano de Tal",
+            computador="notebook", centro_custo=centro, data_prevista_inicio=ontem,
+        )
+        html = self.painel()
+        self.assertIn("Departamento Unico Zeta", html)                          # existe na tela (a lista do filtro)...
+        cartao = self.cartao_de(html, "Analista Exclusivo")
+        self.assertIn("Fulano de Tal", cartao)
+        self.assertIn(ontem.strftime("%d/%m"), cartao)                          # a data prevista
+        self.assertIn("ctr-chip is-perigo", cartao)                             # atrasada continua gritando
+        self.assertIn("ctr-vaga-placar", cartao)                                # o placar feitos/total
+        # ...mas NÃO no cartão: saíram o centro de custo, o tipo de computador e a lista de pendências (moram no detalhe)
+        self.assertNotIn("Departamento Unico Zeta", cartao)
+        self.assertNotIn(vaga.get_computador_display(), cartao)
+        self.assertNotIn("ctr-vaga-pend", cartao)
+        self.assertNotIn("pendência", cartao)
+
+    def test_alertas_que_pedem_acao_continuam_no_cartao(self):
+        Contratacao.objects.create(cargo="Sem máquina", computador="notebook")
+        cartao = self.cartao_de(self.painel(), "Sem máquina")
+        self.assertIn("Sem equipamento reservado", cartao)
+
+    def test_as_etapas_do_quadro_seguem_com_titulo_e_contador(self):
+        Contratacao.objects.create(cargo="Qualquer")
+        html = self.painel()
+        for etapa in ("Em aberto", "Vaga preenchida", "Equipamento entregue", "Concluída"):
+            self.assertRegex(html, rf'{etapa}\s*<span class="ctr-coluna-contador">\(\d+\)</span>')
+        self.assertIn("ctr-add-card", html)                                     # o "+ Nova contratação" da primeira coluna fica
+        self.assertNotIn("ctr-coluna-desc", html)                               # a descrição da etapa virou `title`
+
+
 class TelasRenderizamTests(BaseContratacaoTests):
     """Template quebrado responde 500 -- e include com caminho errado
     renderiza VAZIO sem erro nenhum (regra dos templates fatiados). Estes

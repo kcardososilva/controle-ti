@@ -17,8 +17,8 @@ Conectividade; cada tela exige a SUA permissão:
     administrar_frota_config  token, frequência, limites, mapeamento (e, em `frota.py`, tipos,
                               operadoras e regras de alerta)
 
-As ações de MOVIMENTAÇÃO do chip (vincular, desvincular, transferir, substituir, devolver, inativar)
-estão em `frota_api.py`; as telas daqui só trazem os botões, para quem pode usá-los.
+As ações de MOVIMENTAÇÃO do chip (vincular, desvincular, transferir, substituir, devolver, mudar situação,
+inativar) estão em `frota_api.py`; as telas daqui só trazem os botões, para quem pode usá-los.
 
 Quem não é autenticado vai para o login (302); quem é, mas não tem a permissão, recebe 403. O token
 NUNCA entra em contexto de template: a tela de configuração só recebe a origem (`.env` ou banco) e os
@@ -48,6 +48,7 @@ from ProjetoEstoque.models import (
     Usuario,
 )
 from services import agro_localizacao_service as gps
+from services import chip_situacao_service as situacao_svc
 from services import frota_vinculo_service as vinculos
 from services import m2m_analise_service as analise
 from services import m2m_dados_service as dados_svc
@@ -147,18 +148,20 @@ def m2m_chips(request):
     ativos = _filtros_ativos(request, filtros, _rotulos_de_filtro_de_chips(opcoes["localidades"], opcoes["operadoras"]))
     cfg = M2MIntegracao.get()
     # "Todos · Vinculados · Disponíveis": a relação de chips em uso x livres, com a contagem de cada um.
-    # Manutenção e inativos só aparecem quando existe algum (senão seriam dois zeros sem uso).
+    # As demais situações (reservado, pausado, com defeito, em manutenção, inativo) só aparecem quando existe algum
+    # chip nelas (senão seriam zeros sem uso).
     por_uso = dict(M2MChip.objects.values_list("situacao_uso").annotate(n=Count("pk")))
-    vinculado, disponivel, manutencao, inativo = (
-        M2MChip.SituacaoUso.VINCULADO.value, M2MChip.SituacaoUso.DISPONIVEL.value,
-        M2MChip.SituacaoUso.MANUTENCAO.value, M2MChip.SituacaoUso.INATIVO.value,
-    )
+    Uso = M2MChip.SituacaoUso
+    vinculado, disponivel = Uso.VINCULADO.value, Uso.DISPONIVEL.value
     opcoes_de_uso = [
         ("", "Todos", sum(por_uso.values())),
         (vinculado, "Vinculados", por_uso.get(vinculado, 0)),
         (disponivel, "Disponíveis", por_uso.get(disponivel, 0)),
     ] + [
-        (uso, rotulo, por_uso[uso]) for uso, rotulo in ((manutencao, "Em manutenção"), (inativo, "Inativos"))
+        (uso, rotulo, por_uso[uso]) for uso, rotulo in (
+            (Uso.RESERVADO.value, "Reservados"), (Uso.PAUSADO.value, "Pausados"), (Uso.DEFEITO.value, "Com defeito"),
+            (Uso.MANUTENCAO.value, "Em manutenção"), (Uso.INATIVO.value, "Inativos"),
+        )
         if por_uso.get(uso)
     ]
     return render(request, "front/m2m/chips_list.html", contexto_base(
@@ -192,6 +195,20 @@ def _localizacao_do_chip(request, chip, vinculo_atual) -> dict:
     achado = gps.localizacao_do_chip(chip)
     posicoes = gps.historico_do_veiculo(achado["veiculo"], limite=5) if achado["veiculo"] is not None else []
     return {"localizacao_chip": achado, "posicoes_chip": posicoes}
+
+
+def _situacao_do_chip(chip, api: bool) -> dict:
+    """O que a tela do chip mostra de SITUAÇÃO. As três flags dizem quais botões do menu "Movimentar" fazem sentido
+    agora — a regra é a do service (`SITUACOES_LIVRES`, `SITUACOES_QUE_NAO_VINCULAM`), que recusa de novo no POST."""
+    atual = chip.situacao_uso
+    return {
+        "sugestoes_situacao": situacao_svc.sugestoes_para(chip, com_api=api),
+        "dias_na_situacao": situacao_svc.dias_na_situacao(chip),
+        "mudancas_de_situacao": m2m.mudancas_de_situacao(chip),
+        "chip_aceita_vinculo": atual not in vinculos.SITUACOES_QUE_NAO_VINCULAM and atual != M2MChip.SituacaoUso.VINCULADO,
+        "chip_situacao_livre": atual in vinculos.SITUACOES_LIVRES,
+        "chip_pode_devolver": atual not in (M2MChip.SituacaoUso.DISPONIVEL, M2MChip.SituacaoUso.VINCULADO),
+    }
 
 
 @exige_frota("ver_chips")
@@ -232,6 +249,9 @@ def m2m_chip_detalhe(request, pk):
         # a posição do veículo é dado do módulo de frotas, não do de chips.
         **_localizacao_do_chip(request, chip, vinculo_atual),
         **contexto_do_estoque_ti(request, chip),
+        # Situação e acompanhamento: o que o sistema SUGERE (nunca aplica) e por onde o chip passou. As ações do diálogo
+        # são as do menu "Movimentar", com a mesma permissão — esconder aqui não autoriza, o endpoint confere de novo.
+        **_situacao_do_chip(chip, api),
         sessoes_dados=dados_svc.painel_do_chip(chip) if api else None,
         fita=m2m.fita_consultas(chip, 24) if api else None,
         serie=serie,

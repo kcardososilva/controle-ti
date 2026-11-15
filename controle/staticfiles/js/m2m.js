@@ -465,8 +465,38 @@
   const faixaSync = document.querySelector('[data-sync-url]');
   if (faixaSync) {
     const INTERVALO_MS = 30000;
+    const INTERVALO_DO_LOTE_MS = 5000;     // com o "Atualizar todos" rodando, o "X de N" anda: pergunta mais vezes
+    const CARENCIA_DO_LOTE_MS = 30000;     // o processo do lote leva alguns segundos para tomar a trava
+    const botaoTodos = faixaSync.querySelector('[data-m2m-atualizar-todos]');
     const campo = (nome) => faixaSync.querySelector('[data-sync-campo="' + nome + '"]');
     function texto(nome, valor) { const e = campo(nome); if (e) e.textContent = valor; }
+
+    // O estado do lote vem do SERVIDOR (a página pode ter sido aberta no meio dele); o navegador só lembra se foi ELE
+    // quem pediu, para recarregar os números ao terminar — e que o pedido é recente, para não dar o lote por acabado
+    // antes de ele ter começado.
+    let emLote = faixaSync.dataset.lote === '1';
+    let pediuAqui = false;
+    let pediuEm = 0;
+    let viuAndamento = emLote;
+    let relogio = null;
+
+    function loteTerminou() {
+      emLote = false;
+      if (botaoTodos) botaoTodos.disabled = false;
+      texto('lote', '');
+      if (!viuAndamento) {
+        avisar('A atualização não chegou a começar. Veja o estado da integração na faixa.', 'aviso');
+      } else if (pediuAqui) {
+        // Quem pediu quer ver os números novos: a lista e o detalhe são desenhados pelo servidor, então recarrega.
+        guardar('m2m.aviso', JSON.stringify({ mensagem: 'Todos os chips foram atualizados.', tom: 'ok' }));
+        window.location.reload();
+        return;
+      } else {
+        avisar('A atualização de todos os chips terminou. Recarregue a página para ver os números novos.', 'info');
+      }
+      pediuAqui = false;
+    }
+
     function aplicar(d) {
       faixaSync.dataset.sync = d.estado;
       const ind = faixaSync.querySelector('[data-sync-ind] .m2m-ind');
@@ -484,16 +514,60 @@
         texto('ciclo', d.ciclo.consultados + ' chip' + (d.ciclo.consultados === 1 ? '' : 's') + ' · ' + d.ciclo.falhas +
           ' falha' + (d.ciclo.falhas === 1 ? '' : 's') + ' · ' + d.ciclo.chamadas + ' req.');
       }
+      if (d.lote) {
+        emLote = true;
+        viuAndamento = true;
+        if (botaoTodos) botaoTodos.disabled = true;
+        texto('lote', 'Atualizando ' + d.lote.feitos + ' de ' + d.lote.total + '…');
+      } else if (emLote && (viuAndamento || Date.now() - pediuEm > CARENCIA_DO_LOTE_MS)) {
+        loteTerminou();
+      }
     }
+
     async function perguntar() {
-      if (document.hidden) return;
-      try {
-        const r = await fetch(faixaSync.dataset.syncUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
-        if (r.ok) aplicar(await r.json());
-      } catch (e) { /* sem rede: a faixa fica como estava e a próxima pergunta tenta de novo */ }
+      if (!document.hidden) {
+        try {
+          const r = await fetch(faixaSync.dataset.syncUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+          if (r.ok) aplicar(await r.json());
+        } catch (e) { /* sem rede: a faixa fica como estava e a próxima pergunta tenta de novo */ }
+      }
+      agendar();
     }
-    setInterval(perguntar, INTERVALO_MS);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) perguntar(); });
+    function agendar() {
+      clearTimeout(relogio);
+      relogio = setTimeout(perguntar, emLote ? INTERVALO_DO_LOTE_MS : INTERVALO_MS);
+    }
+    agendar();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(relogio); perguntar(); } });
+
+    /* "Atualizar todos": o servidor só CONFERE e abre o processo (202); o andamento volta pela pergunta acima. */
+    if (botaoTodos) {
+      botaoTodos.addEventListener('click', async () => {
+        if (botaoTodos.disabled) return;
+        botaoTodos.disabled = true;
+        botaoTodos.classList.add('is-carregando');
+        try {
+          const r = await enviar(botaoTodos.dataset.url, {});
+          const d = r.dados;
+          if (!d) { avisar(mensagemDeFalha(r), 'erro'); botaoTodos.disabled = false; return; }
+          if (d.recusada || r.status === 409) { avisar(d.mensagem, 'aviso'); botaoTodos.disabled = false; return; }
+          if (!r.ok) { avisar(d.mensagem || mensagemDeFalha(r), 'erro'); botaoTodos.disabled = false; return; }
+          avisar(d.mensagem, 'info');
+          emLote = true;
+          pediuAqui = true;
+          viuAndamento = false;
+          pediuEm = Date.now();
+          texto('lote', 'Iniciando…');
+          clearTimeout(relogio);
+          relogio = setTimeout(perguntar, 2500);
+        } catch (e) {
+          avisar('Não foi possível falar com o servidor. Tente de novo.', 'erro');
+          botaoTodos.disabled = false;
+        } finally {
+          botaoTodos.classList.remove('is-carregando');
+        }
+      });
+    }
   }
 
   /* ── 9 · Configuração: prévia ao vivo do mapeamento ─────────── */

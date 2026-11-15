@@ -13,6 +13,10 @@ Três conceitos, e eles não se misturam:
   • CICLO          — `PreventivaCicloMeta`: a janela de 90 dias em que o parque
                      inteiro do subtipo tem de ser executado uma vez.
 
+A tela "Responsáveis por Área" também lê daqui: `parque_por_responsavel` monta,
+para cada técnico, a lista do que ele responde (mesma regra de
+`responsaveis_map`, mesma apuração de `apurar_ciclo`; só leitura).
+
 A meta NÃO é um placar gravado. Previstos, realizados e pendentes saem de
 `PreventivaExecucao` a cada leitura: gravar o resultado criaria uma segunda
 verdade que fica errada no instante em que alguém corrige uma execução, e o
@@ -903,4 +907,305 @@ def resumo_ciclo(ciclo, hoje: date | None = None) -> dict:
         "risco": risco,
         "risco_label": risco_label,
         "dias_restantes": ciclo.dias_restantes(hoje),
+    }
+
+
+# =========================================================
+# PARQUE DE CADA RESPONSÁVEL
+# =========================================================
+#
+# "Responsáveis por Área" diz QUEM responde por cada parque; esta leitura diz
+# O QUE cada um responde — a lista de equipamentos, já com o que o técnico
+# precisa saber para decidir a próxima visita. É só leitura: não grava nada e
+# não tem regra própria de previsto/realizado. Com ciclo vigente, quem diz se o
+# ativo está feito ou pendente é `apurar_ciclo` (regras 44 e 47: uma apuração
+# só); sem ciclo, vale a cadência individual do ativo (`Preventiva.data_proxima`).
+
+# Faixa, em dias, em que "próxima preventiva" deixa de ser "em dia" e passa a ser
+# "vence em breve". Só vale quando o subtipo NÃO tem ciclo vigente: com ciclo, o
+# prazo é o do ciclo, não o de cada ativo. Escolha minha (a confirmar): é o
+# tempo de agendar e fazer a visita sem pegar o ativo já vencido.
+_JANELA_VENCE_EM_BREVE_DIAS = 15
+
+# Ordem de urgência dos tons: quem está atrasado vem antes de quem só está sem
+# agenda, e quem já tem data marcada vem depois dos dois.
+_RANK_DO_TOM = {"perigo": 0, "aviso": 1, "neutro": 2, "info": 3, "ok": 4}
+
+
+def _dias_texto(n: int) -> str:
+    return f"{n} dia" + ("" if n == 1 else "s")
+
+
+def _estado_do_equipamento(item, prev, ciclo, tecnico_nome, hoje, rotulo_status):
+    """
+    O estado de UM equipamento na visão do técnico: em que grupo cai, com que
+    tom e com que texto curto. `ciclo` é o dict montado a partir de
+    `apurar_ciclo` (ou None quando o subtipo não tem ciclo vigente).
+    """
+    from ProjetoEstoque.models import StatusItemChoices
+
+    base = {"novo": False, "data_ref": None}
+
+    # Fora de operação: continua sendo do técnico, mas NÃO é visita — o modelo
+    # congela a contagem de preventiva (`Preventiva.pausar`) e o ativo não está
+    # no denominador da meta. Mostra o status, sem cobrança.
+    if item.status != StatusItemChoices.ATIVO:
+        return {**base, "grupo": "fora", "tom": "neutro",
+                "etiqueta": rotulo_status.get(item.status, item.status)}
+
+    if ciclo:
+        base["novo"] = bool(ciclo.get("novo"))
+        if ciclo["estado"] == "feita":
+            quem = ciclo.get("quem") or ""
+            etiqueta = f"Feita em {ciclo['data']:%d/%m}"
+            if quem and quem != tecnico_nome:
+                etiqueta += f" · {quem}"
+            return {**base, "grupo": "em_dia", "tom": "ok", "etiqueta": etiqueta,
+                    "data_ref": ciclo["data"]}
+        # Pendente no ciclo. Mesmos textos do cartão "Equipamentos que faltam"
+        # do painel de metas: a mesma pendência não pode ter duas linguagens.
+        agendada = ciclo.get("agendada")
+        quem = ciclo.get("quem") or ""
+        de_outro = f" · {quem}" if quem and quem != tecnico_nome else ""
+        if ciclo.get("sem_preventiva"):
+            return {**base, "grupo": "pendente", "tom": "aviso", "etiqueta": "Sem preventiva"}
+        if ciclo.get("vencida"):
+            return {**base, "grupo": "pendente", "tom": "perigo",
+                    "etiqueta": f"Venceu {agendada:%d/%m}{de_outro}", "data_ref": agendada}
+        if agendada:
+            return {**base, "grupo": "pendente", "tom": "info",
+                    "etiqueta": f"Agendada {agendada:%d/%m}{de_outro}", "data_ref": agendada}
+        return {**base, "grupo": "pendente", "tom": "neutro", "etiqueta": f"Sem agenda{de_outro}"}
+
+    # Sem ciclo vigente: cadência individual do ativo.
+    if prev is None:
+        return {**base, "grupo": "pendente", "tom": "aviso", "etiqueta": "Sem preventiva"}
+    proxima = prev["data_proxima"]
+    if proxima is None:
+        return {**base, "grupo": "pendente", "tom": "aviso", "etiqueta": "Sem data prevista"}
+    atraso = (hoje - proxima).days
+    if atraso > 0:
+        return {**base, "grupo": "pendente", "tom": "perigo",
+                "etiqueta": f"Vencida há {_dias_texto(atraso)}", "data_ref": proxima}
+    faltam = (proxima - hoje).days
+    if faltam <= _JANELA_VENCE_EM_BREVE_DIAS:
+        return {**base, "grupo": "pendente", "tom": "aviso",
+                "etiqueta": "Vence hoje" if faltam == 0 else f"Vence em {_dias_texto(faltam)}",
+                "data_ref": proxima}
+    return {**base, "grupo": "em_dia", "tom": "ok",
+            "etiqueta": f"Em dia · próxima {proxima:%d/%m}", "data_ref": proxima}
+
+
+def parque_por_responsavel(hoje: date | None = None, primeiro_id: int | None = None) -> dict:
+    """
+    Equipamentos que cada técnico responde, prontos para a tela "Responsáveis
+    por Área".
+
+    O ativo vai para o técnico pela MESMA regra de `responsaveis_map` — a linha
+    específica do subtipo vence a padrão da área, e linha inativa não conta —,
+    resolvida em memória para não fazer uma consulta por subtipo. Há teste
+    fixando o paralelo com `responsavel_do_item`.
+
+    Entram os ativos com `precisa_preventiva='sim'` e área definida. Quem está
+    fora de operação entra também, num grupo à parte: continua sendo do técnico.
+
+    Devolve `{"tecnicos": [...], "sem_responsavel": [...], ...}`. Cada técnico
+    traz os totais e três listas: `locais` (PENDENTES agrupados por localidade,
+    na ordem em que vale a pena visitar: mais pendência primeiro, e dentro do
+    local o mais urgente), `em_dia` e `fora_de_operacao`. `primeiro_id` (o
+    usuário que está olhando) vem à frente dos demais.
+
+    Custo fixo em relação ao tamanho do parque: itens, preventivas e linhas de
+    responsável são três consultas; o resto são as de `apurar_ciclo` para cada
+    subtipo que tenha ciclo vigente.
+    """
+    from ProjetoEstoque.models import (
+        AreaOperacionalChoices,
+        Item,
+        Preventiva,
+        PreventivaAreaResponsavel,
+        SimNaoChoices,
+        StatusItemChoices,
+    )
+
+    hoje = hoje or timezone.localdate()
+    rotulo_status = dict(StatusItemChoices.choices)
+    rotulo_area = {
+        AreaOperacionalChoices.PRODUTIVA: "Produtiva",
+        AreaOperacionalChoices.NAO_PRODUTIVA: "Não Produtiva",
+    }
+
+    # ── Quem responde por quê ──────────────────────────────────────────────
+    linhas = list(
+        PreventivaAreaResponsavel.objects
+        .filter(ativo=True)
+        .select_related("tecnico", "subtipo")
+        .order_by("area", "subtipo__nome")
+    )
+    padrao: dict = {}
+    especifico: dict = {}
+    buckets: "OrderedDict[int, dict]" = OrderedDict()
+    for linha in linhas:
+        if linha.subtipo_id is None:
+            padrao[linha.area] = linha.tecnico
+        else:
+            especifico[(linha.area, linha.subtipo_id)] = linha.tecnico
+        uid = linha.tecnico_id
+        if uid not in buckets:
+            buckets[uid] = {
+                "tecnico": linha.tecnico,
+                "id": uid,
+                "nome": _nome(linha.tecnico),
+                "voce": uid == primeiro_id,
+                "escopos": [],
+                "total": 0,
+                "pendentes": 0,
+                "atrasados": 0,
+                "feitos": 0,
+                "fora": 0,
+                "subtipos": set(),
+                "_pendentes": [],
+                "em_dia": [],
+                "fora_de_operacao": [],
+            }
+        buckets[uid]["escopos"].append({
+            "linha_id": linha.pk,
+            "area": linha.area,
+            "area_label": rotulo_area.get(linha.area, linha.get_area_display()),
+            "subtipo": linha.subtipo.nome if linha.subtipo_id else None,
+        })
+
+    # ── Equipamentos do programa, já classificados ────────────────────────
+    itens = list(
+        Item.objects
+        .filter(
+            precisa_preventiva=SimNaoChoices.SIM,
+            area_operacional__in=[AreaOperacionalChoices.PRODUTIVA, AreaOperacionalChoices.NAO_PRODUTIVA],
+        )
+        .select_related("localidade", "subtipo")
+        .order_by("nome")
+    )
+    item_ids = [i.pk for i in itens]
+
+    # Preventiva mais urgente de cada um — o MESMO critério de `apurar_ciclo`.
+    prev_por_item: dict[int, dict] = {}
+    if item_ids:
+        for linha in (
+            Preventiva.objects
+            .filter(equipamento_id__in=item_ids)
+            .values("equipamento_id", "data_proxima")
+            .order_by("equipamento_id", "data_proxima", "id")
+        ):
+            prev_por_item.setdefault(linha["equipamento_id"], linha)
+
+    # ── Ciclo vigente: quem diz "feita" ou "pendente" é a apuração ─────────
+    ciclo_por_item: dict[int, dict] = {}
+    for subtipo_id in sorted({i.subtipo_id for i in itens if i.subtipo_id}):
+        ciclo = ciclo_vigente(subtipo_id, hoje)
+        if ciclo is None:
+            continue
+        apuracao = apurar_ciclo(ciclo, hoje)
+        for area in apuracao["areas"]:
+            for it in area["itens_realizados"]:
+                ciclo_por_item[it.pk] = {
+                    "estado": "feita",
+                    "data": it.meta_data_execucao,
+                    "quem": it.meta_tecnico_nome,
+                    "novo": it.meta_novo_no_ciclo,
+                }
+            for it in area["itens_pendentes"]:
+                ciclo_por_item[it.pk] = {
+                    "estado": "pendente",
+                    "agendada": it.meta_data_agendamento,
+                    "vencida": it.meta_agendamento_vencido,
+                    "sem_preventiva": it.meta_sem_preventiva,
+                    "quem": it.meta_tecnico_nome,
+                    "novo": it.meta_novo_no_ciclo,
+                }
+
+    # ── Distribuição ───────────────────────────────────────────────────────
+    sem_resp: dict[tuple, dict] = {}
+    for item in itens:
+        tecnico = especifico.get((item.area_operacional, item.subtipo_id)) or padrao.get(item.area_operacional)
+        if tecnico is None:
+            chave = (item.area_operacional, item.subtipo_id)
+            achado = sem_resp.setdefault(chave, {
+                "area": item.area_operacional,
+                "area_label": rotulo_area.get(item.area_operacional, item.area_operacional),
+                "subtipo": item.subtipo.nome if item.subtipo_id else "Sem subtipo",
+                "total": 0,
+            })
+            achado["total"] += 1
+            continue
+
+        bucket = buckets[tecnico.pk]
+        estado = _estado_do_equipamento(
+            item, prev_por_item.get(item.pk), ciclo_por_item.get(item.pk),
+            bucket["nome"], hoje, rotulo_status,
+        )
+        linha = {
+            "item": item,
+            "pk": item.pk,
+            "nome": item.nome,
+            "numero_serie": item.numero_serie,
+            "subtipo": item.subtipo.nome if item.subtipo_id else "",
+            "area": item.area_operacional,
+            "area_label": rotulo_area.get(item.area_operacional, ""),
+            "localidade": item.localidade.local if item.localidade_id else "Sem localidade",
+            **estado,
+        }
+        bucket["subtipos"].add(item.subtipo_id)
+        bucket["total"] += 1
+        if estado["grupo"] == "pendente":
+            bucket["pendentes"] += 1
+            if estado["tom"] == "perigo":
+                bucket["atrasados"] += 1
+            bucket["_pendentes"].append(linha)
+        elif estado["grupo"] == "em_dia":
+            bucket["feitos"] += 1
+            bucket["em_dia"].append(linha)
+        else:
+            bucket["fora"] += 1
+            bucket["fora_de_operacao"].append(linha)
+
+    # ── Ordem de visita dentro de cada técnico ─────────────────────────────
+    def _urgencia(linha):
+        # Sem data de referência (nunca teve preventiva, ou não tem agenda) vem
+        # ANTES de quem tem data no mesmo tom: o buraco maior é o que nunca foi
+        # feito, e "vence em 5 dias" ao menos já está no radar.
+        return (
+            _RANK_DO_TOM.get(linha["tom"], 9),
+            linha["data_ref"] or date.min,
+            linha["nome"].lower(),
+        )
+
+    for bucket in buckets.values():
+        por_local: dict[str, list] = {}
+        for linha in bucket.pop("_pendentes"):
+            por_local.setdefault(linha["localidade"], []).append(linha)
+        bucket["locais"] = sorted(
+            (
+                {"local": local, "total": len(lista), "itens": sorted(lista, key=_urgencia)}
+                for local, lista in por_local.items()
+            ),
+            key=lambda g: (-g["total"], g["local"].lower()),
+        )
+        bucket["em_dia"].sort(key=lambda l: l["nome"].lower())
+        bucket["fora_de_operacao"].sort(key=lambda l: l["nome"].lower())
+        # Mais de um subtipo (ou das duas áreas) no parque: a linha passa a
+        # dizer de qual é cada um. Com um só, seria repetição em toda linha.
+        bucket["varios_subtipos"] = len(bucket["subtipos"]) > 1
+        bucket["varias_areas"] = len({e["area"] for e in bucket["escopos"]}) > 1
+        bucket.pop("subtipos")
+
+    tecnicos = sorted(
+        buckets.values(),
+        key=lambda b: (0 if b["voce"] else 1, -b["pendentes"], b["nome"].lower()),
+    )
+    vagos = sorted(sem_resp.values(), key=lambda v: (v["area_label"], v["subtipo"]))
+    return {
+        "hoje": hoje,
+        "tecnicos": tecnicos,
+        "sem_responsavel": vagos,
+        "sem_responsavel_total": sum(v["total"] for v in vagos),
     }

@@ -102,7 +102,7 @@ def equipamento_chip_vincular(request, pk):
 @exige_frota("transferir_chips")
 @require_POST
 def equipamento_chip_desvincular(request, pk, vinculo_id):
-    """Encerra o vínculo `vinculo_id` deste equipamento. `destino`: `disponivel` | `manutencao` (para onde vai o chip)."""
+    """Encerra o vínculo `vinculo_id` deste equipamento. `destino`: uma das situações livres do chip (`frota_vinculo_service.SITUACOES_LIVRES`)."""
     item = _item_do_ti(pk)
     destino = (request.POST.get("destino") or "").strip() or "disponivel"
 
@@ -119,7 +119,7 @@ def equipamento_chip_desvincular(request, pk, vinculo_id):
 @exige_frota("transferir_chips")
 @require_POST
 def equipamento_chip_substituir(request, pk, vinculo_id):
-    """Troca o chip do vínculo `vinculo_id` por `chip_novo` NESTE equipamento. `destino_antigo`: `disponivel` | `manutencao`."""
+    """Troca o chip do vínculo `vinculo_id` por `chip_novo` NESTE equipamento. `destino_antigo`: uma das situações livres do chip."""
     item = _item_do_ti(pk)
 
     def agir():

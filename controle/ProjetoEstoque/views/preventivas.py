@@ -2514,6 +2514,11 @@ def preventiva_metas_config(request):
     de referência. Fica separada do painel porque o painel é tela de leitura
     diária do gestor e isto é cadastro — misturar os dois é como se chegou a
     seis marcações de paginação diferentes (CLAUDE.md, design system).
+
+    A tela abre pelo PARQUE de cada técnico (`parque_por_responsavel`, só
+    leitura, regra 74): quem está logado vem primeiro e aberto. O cadastro de
+    responsáveis fica recolhido em "Gerenciar responsáveis" e reabre sozinho
+    quando o formulário volta com erro.
     """
     from django.core.exceptions import ValidationError
 
@@ -2700,8 +2705,13 @@ def preventiva_metas_config(request):
             })
     pendencias.sort(key=lambda p: -p["sem_area"])
 
+    # O parque de cada técnico (só leitura). Quem está logado vem primeiro e o
+    # cartão dele abre sozinho — é a pergunta que ele traz para esta tela.
+    parque = meta_service.parque_por_responsavel(hoje, primeiro_id=request.user.pk)
+
     context = {
         "hoje": hoje,
+        "parque": parque,
         "form_responsavel": form_responsavel,
         "form_ciclo": form_ciclo,
         "editando_responsavel": editando_responsavel,

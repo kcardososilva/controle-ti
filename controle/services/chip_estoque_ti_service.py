@@ -462,6 +462,32 @@ def divergencias_do_par(chip: M2MChip, item: Item, detentor: Detentor | None = N
     return achados
 
 
+# O status do item de chip no estoque de TI traduzido para a situação equivalente do chip no Agro. Só o que tem
+# equivalência: `ativo` fica de fora (no TI quer dizer "em uso", no Agro isso é o vínculo, que é decisão de outra tela).
+SITUACAO_DO_CHIP_PELO_STATUS_DO_ITEM = {
+    StatusItemChoices.DEFEITO: M2MChip.SituacaoUso.DEFEITO,
+    StatusItemChoices.MANUTENCAO: M2MChip.SituacaoUso.MANUTENCAO,
+    StatusItemChoices.PAUSADO: M2MChip.SituacaoUso.PAUSADO,
+    StatusItemChoices.RESERVADO: M2MChip.SituacaoUso.RESERVADO,
+    StatusItemChoices.BACKUP: M2MChip.SituacaoUso.DISPONIVEL,
+    StatusItemChoices.ESTOQUE: M2MChip.SituacaoUso.DISPONIVEL,
+    StatusItemChoices.DESCARTE: M2MChip.SituacaoUso.INATIVO,
+    StatusItemChoices.DEVOLVIDO: M2MChip.SituacaoUso.INATIVO,
+}
+
+
+def situacao_sugerida_pelo_item(chip: M2MChip, item: Item) -> str:
+    """A situação que o estoque de TI sugere para o CHIP, ou `""` quando não há o que sugerir. Só LÊ (nada é gravado
+    no `Item` nem no chip): o chip vinculado fica de fora porque quem o move é desvincular/substituir; o item excluído
+    também (o aviso dele já é a divergência `item_excluido`); e o chip INATIVO também — inativar é decisão deliberada
+    (linha cancelada na operadora) e o item parado no TI é que pode estar velho, o que a divergência `chip_inativo` já
+    diz do outro lado. Quem decide é quem opera o chip."""
+    if item.excluido or chip.situacao_uso in (M2MChip.SituacaoUso.VINCULADO, M2MChip.SituacaoUso.INATIVO):
+        return ""
+    sugerida = SITUACAO_DO_CHIP_PELO_STATUS_DO_ITEM.get(item.status, "")
+    return sugerida if sugerida and sugerida != chip.situacao_uso else ""
+
+
 def divergencias_dos_ligados(ligados) -> dict[int, list]:
     """`{chip_id: [divergências]}` para os pares ligados, com o detentor e o destino lidos em lote."""
     ligados = list(ligados)

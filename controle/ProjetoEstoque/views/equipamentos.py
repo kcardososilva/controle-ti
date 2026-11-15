@@ -18,6 +18,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..models import (
     Item, Subtipo, Categoria, Localidade, CentroCusto, Fornecedor,
+    AreaOperacionalChoices,
     Locacao, SimNaoChoices, StatusItemChoices, ItemLote,
     MovimentacaoItem, TipoMovimentacaoChoices, TipoTransferenciaChoices,
     Preventiva, PlantaProjeto,
@@ -203,6 +204,49 @@ def _filtrar_por_ids(queryset, campo, ids, exceto):
     return queryset.exclude(**condicao) if exceto else queryset.filter(**condicao)
 
 
+# Filtro de Área de operação da lista de ativos. `sem_area` não é um valor do
+# campo: é o estado "não classificado" da regra 47a (NULL e "" são a MESMA
+# coisa), e existe porque sem ele não há como chegar aos equipamentos que
+# ainda esperam classificação.
+AREA_SEM_CLASSIFICACAO = "sem_area"
+
+
+def _opcoes_de_area():
+    """[(valor, rótulo)] do controle segmentado, na ordem em que aparece na tela."""
+    return [
+        (AreaOperacionalChoices.PRODUTIVA, "Produtiva"),
+        (AreaOperacionalChoices.NAO_PRODUTIVA, "Não produtiva"),
+        (AREA_SEM_CLASSIFICACAO, "Sem área"),
+    ]
+
+
+# Atalhos de status sempre à vista na barra de filtros. Qualquer outro status
+# (reservado, correção, descarte…) só existe no select de "Mais filtros", que
+# pode estar fechado — por isso o badge e a abertura inicial do painel contam
+# esse caso como filtro escondido. O JS lê a mesma lista dos próprios chips.
+ATALHOS_DE_STATUS = [
+    ("ativo", "Ativos"),
+    ("backup", "Backup"),
+    ("estoque", "Estoque"),
+    ("manutencao", "Manutenção"),
+    ("pausado", "Pausado"),
+    ("defeito", "Defeito"),
+]
+
+
+def _filtrar_por_area(queryset, valor):
+    """
+    Restringe `queryset` à área escolhida. Valor vazio ou desconhecido não
+    filtra: a URL é digitável, e um `?area=lixo` que zerasse a lista pareceria
+    "nenhum ativo" quando na verdade foi ignorado.
+    """
+    if valor == AREA_SEM_CLASSIFICACAO:
+        return queryset.filter(Q(area_operacional__isnull=True) | Q(area_operacional=""))
+    if valor in (AreaOperacionalChoices.PRODUTIVA, AreaOperacionalChoices.NAO_PRODUTIVA):
+        return queryset.filter(area_operacional=valor)
+    return queryset
+
+
 def _build_nested_q(related_model, prefix, related_fields, search_value):
     """
     Monta Q seguro para relações aninhadas.
@@ -331,6 +375,7 @@ def _aplicar_filtros_itens(request, qs):
     centro_custo_ids = [v for v in request.GET.getlist("centro_custo") if v.isdigit()]
     tipo_item = request.GET.get("tipo_item", "").strip()
     estoque = request.GET.get("estoque", "").strip()
+    area = request.GET.get("area", "").strip()
 
     # Toggle "Exceto" — inverte Subtipo/Localidade/Centro de Custo de "apenas
     # estes" para "todos, exceto estes". `_filtrar_por_ids` já é no-op sem
@@ -353,6 +398,7 @@ def _aplicar_filtros_itens(request, qs):
     qs = _filtrar_por_ids(qs, "subtipo_id", subtipo_ids, subtipo_exc)
     if status:
         qs = qs.filter(status=status)
+    qs = _filtrar_por_area(qs, area)
 
     if fornecedor:
         fornecedor_q = _build_related_q(Item, "fornecedor", ["nome", "razao_social", "fantasia"], fornecedor)
@@ -480,23 +526,44 @@ def _build_queryset_and_context(request):
     next_qs = next_params.urlencode()
     next_url = f"{request.path}?{next_qs}" if next_qs else request.path
 
-    # Quantos campos de filtro estão com algum valor selecionado — mostrado
-    # como badge no resumo do painel (fechado ou aberto). Os toggles "*_exc"
-    # ficam de fora de propósito: marcar "Exceto" sem nada selecionado ainda
-    # não é, por si só, um filtro ativo.
-    filtros_contagem = {
-        "nome": request.GET.get("nome", "").strip(),
-        "numero_serie": request.GET.get("numero_serie", "").strip(),
+    # A área só vale se for um dos três valores conhecidos: o rádio marcado, o
+    # badge e a dica de lista vazia precisam concordar com o que o filtro de
+    # fato aplicou (um `?area=lixo` é ignorado por `_filtrar_por_area`).
+    opcoes_area = _opcoes_de_area()
+    area_sel = request.GET.get("area", "").strip()
+    if area_sel not in {valor for valor, _ in opcoes_area}:
+        area_sel = ""
+    area_rotulo = dict(opcoes_area).get(area_sel, "")
+
+    # Quantos campos de filtro estão com algum valor selecionado. Os toggles
+    # "*_exc" ficam de fora de propósito: marcar "Exceto" sem nada selecionado
+    # ainda não é, por si só, um filtro ativo.
+    #
+    # Dois números, porque a tela tem dois lugares: busca por nome, busca por nº
+    # de série, área e status ficam SEMPRE à vista na barra (não precisam de
+    # badge), e o resto mora em "Mais filtros", que pode estar fechado — o badge
+    # dele conta só os escondidos.
+    # A lista de campos escondidos é a mesma de `FILTRO_AVANCADOS` em
+    # static/js/equipamentos-list.js.
+    filtros_avancados_valores = {
         "modelo": request.GET.get("modelo", "").strip(),
         "fornecedor": request.GET.get("fornecedor", "").strip(),
-        "status": request.GET.get("status", "").strip(),
         "tipo_item": request.GET.get("tipo_item", "").strip(),
         "estoque": request.GET.get("estoque", "").strip(),
         "subtipo": request.GET.getlist("subtipo"),
         "localidade": request.GET.getlist("localidade"),
         "centro_custo": request.GET.getlist("centro_custo"),
     }
-    filtros_ativos = sum(1 for v in filtros_contagem.values() if v)
+    filtros_avancados = sum(1 for v in filtros_avancados_valores.values() if v)
+    status_sel = request.GET.get("status", "").strip()
+    if status_sel and status_sel not in {valor for valor, _ in ATALHOS_DE_STATUS}:
+        filtros_avancados += 1
+    nome_sel = request.GET.get("nome", "").strip()
+    serie_sel = request.GET.get("numero_serie", "").strip()
+    tem_filtro = bool(filtros_avancados or area_sel or status_sel or nome_sel or serie_sel)
+    # A área é o ÚNICO filtro: só então um resultado vazio autoriza a dica "ninguém
+    # foi classificado como X ainda" (ver `_tbody.html`).
+    area_so_ela = bool(area_sel) and not (filtros_avancados or status_sel or nome_sel or serie_sel)
 
     context = {
         "itens": itens,
@@ -524,7 +591,18 @@ def _build_queryset_and_context(request):
         "subtipo_exc": request.GET.get("subtipo_exc") == "1",
         "localidade_exc": request.GET.get("localidade_exc") == "1",
         "centro_custo_exc": request.GET.get("centro_custo_exc") == "1",
-        "filtros_ativos": filtros_ativos,
+        "filtros_avancados": filtros_avancados,
+        "tem_filtro": tem_filtro,
+
+        # Área de operação (Produtiva / Não produtiva / Sem área).
+        "area_opcoes": opcoes_area,
+        "area_sel": area_sel,
+        "area_rotulo": area_rotulo,
+        "area_so_ela": area_so_ela,
+
+        # Atalhos de status da barra (o select completo fica em "Mais filtros").
+        "status_atalhos": ATALHOS_DE_STATUS,
+        "status_sel": status_sel,
     }
 
     return context

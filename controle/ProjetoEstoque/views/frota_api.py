@@ -16,6 +16,7 @@ entrada, chama o service e responde.
     frota_transferir       transferir_chips   (idem)
     frota_substituir       transferir_chips   (idem)
     frota_retornar         transferir_chips
+    frota_situacao         transferir_chips   (reservado, pausado, com defeito, em manutenção ou disponível: chip livre)
     frota_inativar         transferir_chips
     frota_opcoes           vincular_chips | transferir_chips | editar_frota (por `campo`)
     frota_importacao_*     importar_chips   (confirmar, cancelar, relatório em Excel e modelo da planilha)
@@ -194,7 +195,8 @@ def frota_vincular(request):
 @exige_frota("transferir_chips")
 @require_POST
 def frota_desvincular(request, vinculo_id):
-    """Encerra o vínculo `vinculo_id` (o que a tela mostrava). `destino`: `disponivel` | `manutencao`."""
+    """Encerra o vínculo `vinculo_id` (o que a tela mostrava). `destino`: para onde o chip vai —
+    `disponivel` | `reservado` | `pausado` | `defeito` | `manutencao`."""
     destino = _opcao_de_destino(request, "destino") or "disponivel"
     return _executar(
         request,
@@ -226,7 +228,7 @@ def frota_transferir(request, vinculo_id):
 @require_POST
 def frota_substituir(request, vinculo_id):
     """Troca o chip do vínculo `vinculo_id` por `chip_novo` no MESMO veículo. `destino_antigo`:
-    `disponivel` | `manutencao` (para onde vai o chip que sai)."""
+    `disponivel` | `reservado` | `pausado` | `defeito` | `manutencao` (para onde vai o chip que sai)."""
     def agir():
         novo = _achar(M2MChip, request.POST.get("chip_novo"), "chip_novo", "o chip novo")
         destino = _opcao_de_destino(request, "destino_antigo") or "disponivel"
@@ -245,8 +247,8 @@ def frota_substituir(request, vinculo_id):
 @exige_frota("transferir_chips")
 @require_POST
 def frota_retornar(request, pk):
-    """Devolve à disponibilidade um chip em manutenção ou inativo (`motivo`; `retomar_monitoramento=1`
-    religa a consulta à API)."""
+    """Devolve à disponibilidade um chip parado (manutenção, defeito, pausado), reservado ou inativo (`motivo`;
+    `retomar_monitoramento=1` religa a consulta à API)."""
     def agir():
         chip = _achar(M2MChip, pk, "chip", "um chip")
         retomar = request.POST.get("retomar_monitoramento") == "1"
@@ -256,6 +258,25 @@ def frota_retornar(request, pk):
 
     return _executar(
         request, agir, lambda r: f"Chip {r.chip_nome} devolvido à disponibilidade.", reverse("m2m_chip_detalhe", args=[pk]),
+    )
+
+
+@exige_frota("transferir_chips")
+@require_POST
+def frota_situacao(request, pk):
+    """Muda a situação de um chip que não está vinculado (`situacao`, `motivo`): reservado, pausado, com defeito, em
+    manutenção ou disponível. Quem decide é uma pessoa (a tela só SUGERE); o service recusa chip vinculado e inativo."""
+    def agir():
+        chip = _achar(M2MChip, pk, "chip", "um chip")
+        resultado = vinculos.mudar_situacao(
+            chip, _opcao_de_destino(request, "situacao"), request.user, request.POST.get("motivo", ""),
+        )
+        resultado.chip_nome = chip.nome
+        resultado.situacao_rotulo = M2MChip.objects.get(pk=chip.pk).get_situacao_uso_display().lower()
+        return resultado
+
+    return _executar(
+        request, agir, lambda r: f"Chip {r.chip_nome} agora está {r.situacao_rotulo}.", reverse("m2m_chip_detalhe", args=[pk]),
     )
 
 

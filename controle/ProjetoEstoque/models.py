@@ -6561,6 +6561,9 @@ class M2MChip(AuditModel):
     class SituacaoUso(models.TextChoices):
         DISPONIVEL = "disponivel", "Disponível"
         VINCULADO = "vinculado", "Vinculado"
+        RESERVADO = "reservado", "Reservado"
+        PAUSADO = "pausado", "Pausado"
+        DEFEITO = "defeito", "Com defeito"
         MANUTENCAO = "manutencao", "Em manutenção"
         INATIVO = "inativo", "Inativo"
 
@@ -6610,6 +6613,10 @@ class M2MChip(AuditModel):
     situacao_uso = models.CharField(
         max_length=12, choices=SituacaoUso.choices, default=SituacaoUso.DISPONIVEL, db_index=True,
         help_text="Gravada só pelo serviço de vínculo. Não confundir com `monitorado` (consulta à API).",
+    )
+    situacao_uso_em = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Desde quando o chip está nesta situação. Gravada junto de `situacao_uso`, só quando ela muda de fato.",
     )
     localidade = models.ForeignKey(
         Localidade, on_delete=models.SET_NULL, null=True, blank=True, related_name="chips_m2m",
@@ -7043,6 +7050,7 @@ class M2MEvento(models.Model):
         SUBSTITUIDO = "substituido", "Chip substituído"
         RETORNO_DISPONIBILIDADE = "retorno_disponibilidade", "Chip devolvido à disponibilidade"
         INATIVADO = "inativado", "Chip inativado"
+        SITUACAO_MUDOU = "situacao_mudou", "Situação do chip mudou"
         # Gravado pela migration 0190 ao remover o antigo vínculo direto com `Item`.
         ITEM_REMOVIDO = "item_removido", "Vínculo antigo com equipamento removido"
         CONFIG_FROTA = "config_frota", "Cadastro de apoio alterado"
@@ -7532,6 +7540,7 @@ class FrotaMovimentacao(models.Model):
         RETORNO = "retorno", "Retorno à disponibilidade"
         SUBSTITUICAO = "substituicao", "Substituição"
         INATIVACAO = "inativacao", "Inativação"
+        SITUACAO = "situacao", "Mudança de situação"
 
     tipo = models.CharField(max_length=15, choices=Tipo.choices, db_index=True)
     chip = models.ForeignKey(M2MChip, on_delete=models.PROTECT, related_name="movimentacoes")
